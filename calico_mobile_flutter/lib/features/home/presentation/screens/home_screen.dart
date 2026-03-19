@@ -10,6 +10,7 @@ import '../../data/repositories/session_repository_impl.dart';
 import '../controllers/home_controller.dart';
 import 'course_detail_screen.dart';
 import 'session_detail_screen.dart';
+import 'package:calico_mobile_flutter/features/auth/presentation/screens/profile_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   /// Firebase UID of the logged-in student. Pass empty string for guest mode.
@@ -76,9 +77,13 @@ class _HomeScreenState extends State<HomeScreen> {
         selectedIndex: _selectedTab,
         onTap: (i) {
           if (i == 1) {
-            // TODO!!!!!!: Navigator.push(context, MaterialPageRoute(builder: (_) => ProfileScreen()));
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ProfileScreen()),
+            );
+          } else {
+            setState(() => _selectedTab = i);
           }
-          setState(() => _selectedTab = i);
         },
       ),
     );
@@ -108,9 +113,12 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 16),
               TextButton(
                 onPressed: () => _controller.loadData(widget.studentId),
-                child: Text('Retry',
-                    style: AppTextStyles.buttonLabel
-                        .copyWith(color: AppColors.primary)),
+                child: Text(
+                  'Retry',
+                  style: AppTextStyles.buttonLabel.copyWith(
+                    color: AppColors.primary,
+                  ),
+                ),
               ),
             ],
           ),
@@ -131,7 +139,8 @@ class _HomeScreenState extends State<HomeScreen> {
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                    builder: (_) => CourseDetailScreen(course: c)),
+                  builder: (_) => CourseDetailScreen(course: c),
+                ),
               ),
             ),
           ),
@@ -139,9 +148,11 @@ class _HomeScreenState extends State<HomeScreen> {
         // ── Sessions ─────────────────────────────────────────────────────
         _SectionHeader('Upcoming Sessions'),
         if (_controller.sessions.isEmpty)
-          _EmptyState(widget.studentId.isEmpty
-              ? 'Sign in to see your sessions'
-              : 'No upcoming sessions')
+          _EmptyState(
+            widget.studentId.isEmpty
+                ? 'Sign in to see your sessions'
+                : 'No upcoming sessions',
+          )
         else
           ..._controller.sessions.map(
             (s) => _SessionItem(
@@ -149,7 +160,8 @@ class _HomeScreenState extends State<HomeScreen> {
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                    builder: (_) => SessionDetailScreen(session: s)),
+                  builder: (_) => SessionDetailScreen(session: s),
+                ),
               ),
             ),
           ),
@@ -238,8 +250,10 @@ class _SearchBar extends StatelessWidget {
                     hintText: 'Course name or code',
                     hintStyle: AppTextStyles.searchHint,
                     border: InputBorder.none,
-                    contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 12,
+                    ),
                     isDense: true,
                   ),
                 ),
@@ -295,8 +309,11 @@ class _CourseItem extends StatelessWidget {
                     color: AppColors.inputBackground,
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(Icons.menu_book_outlined,
-                      size: 24, color: AppColors.black),
+                  child: const Icon(
+                    Icons.menu_book_outlined,
+                    size: 24,
+                    color: AppColors.black,
+                  ),
                 ),
                 const SizedBox(width: 16),
                 // Name + code
@@ -349,8 +366,11 @@ class _SessionItem extends StatelessWidget {
                     color: AppColors.primary,
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(Icons.calendar_today,
-                      size: 24, color: AppColors.black),
+                  child: const Icon(
+                    Icons.calendar_today,
+                    size: 24,
+                    color: AppColors.black,
+                  ),
                 ),
                 const SizedBox(width: 16),
                 // Date + tutor + course
@@ -358,13 +378,16 @@ class _SessionItem extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(session.formattedDate,
-                        style: AppTextStyles.itemTitle),
-                    Text(session.displayTutor,
-                        style: AppTextStyles.itemSubtitle),
+                    Text(session.formattedDate, style: AppTextStyles.itemTitle),
+                    Text(
+                      session.displayTutor,
+                      style: AppTextStyles.itemSubtitle,
+                    ),
                     if (session.displayCourse.isNotEmpty)
-                      Text(session.displayCourse,
-                          style: AppTextStyles.itemSubtitle),
+                      Text(
+                        session.displayCourse,
+                        style: AppTextStyles.itemSubtitle,
+                      ),
                   ],
                 ),
               ],
@@ -407,9 +430,13 @@ class _BottomNav extends StatelessWidget {
       unselectedItemColor: AppColors.brown,
       type: BottomNavigationBarType.fixed,
       selectedLabelStyle: GoogleFonts.lexend(
-          fontSize: 12, fontWeight: FontWeight.w500),
+        fontSize: 12,
+        fontWeight: FontWeight.w500,
+      ),
       unselectedLabelStyle: GoogleFonts.lexend(
-          fontSize: 12, fontWeight: FontWeight.w400),
+        fontSize: 12,
+        fontWeight: FontWeight.w400,
+      ),
       items: const [
         BottomNavigationBarItem(
           icon: Icon(Icons.home_outlined),
