@@ -10,8 +10,8 @@ class AuthRepositoryImpl implements AuthRepository {
   const AuthRepositoryImpl(this._apiClient);
 
   @override
-  Future<void> register(RegisterRequest request) async {
-    await _apiClient.post(
+  Future<String> register(RegisterRequest request) async {
+    final data = await _apiClient.post(
       '/auth/register',
       body: {
         'name': request.name,
@@ -22,5 +22,7 @@ class AuthRepositoryImpl implements AuthRepository {
         if (request.courses != null) 'courses': request.courses,
       },
     );
+    // Backend returns UserResponseDto directly — id is the Firebase UID.
+    return data['id']?.toString() ?? '';
   }
 }

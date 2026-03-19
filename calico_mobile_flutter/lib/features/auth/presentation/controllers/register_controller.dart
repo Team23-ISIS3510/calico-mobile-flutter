@@ -5,8 +5,8 @@ import '../../domain/repositories/auth_repository.dart';
 enum RegisterStatus { idle, loading, success, failure }
 
 /// Holds all registration state and exposes a single [register] command.
-/// Extends [ChangeNotifier] so the screen rebuilds only when this calls
-/// [notifyListeners] — no rebuilds from unrelated state changes.
+/// After a successful registration [userId] holds the Firebase UID so the
+/// screen can navigate to HomeScreen with the correct student ID.
 class RegisterController extends ChangeNotifier {
   final AuthRepository _repository;
 
@@ -14,9 +14,11 @@ class RegisterController extends ChangeNotifier {
 
   RegisterStatus _status = RegisterStatus.idle;
   String? _errorMessage;
+  String? _userId;
 
   RegisterStatus get status => _status;
   String? get errorMessage => _errorMessage;
+  String? get userId => _userId;
   bool get isLoading => _status == RegisterStatus.loading;
 
   Future<void> register({
@@ -27,7 +29,7 @@ class RegisterController extends ChangeNotifier {
     _update(RegisterStatus.loading, error: null);
 
     try {
-      await _repository.register(
+      _userId = await _repository.register(
         RegisterRequest(name: name, email: email, password: password),
       );
       _update(RegisterStatus.success);

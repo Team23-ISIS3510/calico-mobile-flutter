@@ -5,7 +5,7 @@ import '../../../../core/constants/app_text_styles.dart';
 import '../../../../core/network/api_client.dart';
 import '../../data/repositories/auth_repository_impl.dart';
 import '../controllers/register_controller.dart';
-import '../widgets/decorative_bottom.dart';
+import '../../../home/presentation/screens/home_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -33,8 +33,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
     setState(() {});
 
     if (_controller.status == RegisterStatus.success) {
-      _showSnackBar('Registration successful! Welcome to Calico.', error: false);
-      // TODO!!!!!!!: Replace with Navigator.pushReplacementNamed(context, '/home');
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => HomeScreen(studentId: _controller.userId ?? ''),
+        ),
+      );
     } else if (_controller.status == RegisterStatus.failure) {
       _showSnackBar(
         _controller.errorMessage ?? 'Registration failed. Please try again.',
@@ -125,8 +128,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ),
             ),
 
-            // ── Decorative illustration (bottom 320 px in the design) ────
-            const DecorativeBottom(),
           ],
         ),
       ),
