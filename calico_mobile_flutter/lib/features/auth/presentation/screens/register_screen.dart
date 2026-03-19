@@ -11,8 +11,6 @@ import '../../../../core/widgets/app_primary_button.dart';
 import '../../data/repositories/auth_repository_impl.dart';
 import '../controllers/register_controller.dart';
 import '../../../home/presentation/screens/home_screen.dart';
-import '../../../../core/validators/form_validators.dart';
-import '../screens/login_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
