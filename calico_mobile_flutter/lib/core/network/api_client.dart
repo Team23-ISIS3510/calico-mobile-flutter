@@ -1,12 +1,10 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:http/http.dart' as http;
 import '../errors/app_exception.dart';
 
 class ApiClient {
-  // Android emulator maps 10.0.2.2 → host machine localhost.
-  // Change to your machine's LAN IP when testing on a real device.
-  static const String _baseUrl = 'http://10.0.2.2:3000';
+
+  static const String _baseUrl = 'http://localhost:3000';
 
   final http.Client _client;
 
@@ -34,9 +32,9 @@ class ApiClient {
           (decoded as Map<String, dynamic>)['message']?.toString() ??
               'Request failed';
       throw AppException(message, statusCode: response.statusCode);
-    } on SocketException {
-      throw const AppException(
-          'No internet connection. Please check your network.');
+    } on http.ClientException catch (e) {
+      // Covers network errors on both web (browser) and mobile/desktop
+      throw AppException('Connection error: ${e.message}');
     } on FormatException {
       throw const AppException('Invalid server response.');
     }
