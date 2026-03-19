@@ -6,6 +6,7 @@ import '../../../../core/network/api_client.dart';
 import '../../data/repositories/auth_repository_impl.dart';
 import '../controllers/register_controller.dart';
 import '../../../home/presentation/screens/home_screen.dart';
+import '../../../../core/validators/form_validators.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -71,8 +72,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   void _onRegisterPressed() {
     if (_formKey.currentState?.validate() ?? false) {
+      // Collapse any sequence of internal whitespace to a single space
+      // so "John     Smith" is stored as "John Smith".
+      final cleanName = _nameController.text.trim().replaceAll(RegExp(r'\s+'), ' ');
+
       _controller.register(
-        name: _nameController.text.trim(),
+        name: cleanName,
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
@@ -90,6 +95,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           children: [
             Form(
               key: _formKey,
+              autovalidateMode: AutovalidateMode.onUserInteraction,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -99,25 +105,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     controller: _nameController,
                     keyboardType: TextInputType.name,
                     textCapitalization: TextCapitalization.words,
-                    validator: (v) => (v == null || v.trim().isEmpty)
-                        ? 'Name is required'
-                        : null,
+                    validator: FormValidators.fullName,
                   ),
                   _InputField(
                     label: 'Email',
                     controller: _emailController,
                     keyboardType: TextInputType.emailAddress,
-                    validator: (v) => (v == null || !v.contains('@'))
-                        ? 'Enter a valid email'
-                        : null,
+                    validator: FormValidators.email,
                   ),
                   _InputField(
                     label: 'Password',
                     controller: _passwordController,
                     obscureText: true,
-                    validator: (v) => (v == null || v.length < 6)
-                        ? 'Minimum 6 characters'
-                        : null,
+                    validator: FormValidators.password,
                   ),
                   _RegisterButton(
                     isLoading: _controller.isLoading,
