@@ -7,6 +7,7 @@ import '../../data/repositories/auth_repository_impl.dart';
 import '../controllers/login_controller.dart';
 import '../../../home/presentation/screens/home_screen.dart';
 import '../../../../core/validators/form_validators.dart';
+import '../screens/register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -49,8 +50,9 @@ class _LoginScreenState extends State<LoginScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message, style: GoogleFonts.lexend(fontSize: 14)),
-        backgroundColor:
-            error ? const Color(0xFFB00020) : const Color(0xFF4CAF50),
+        backgroundColor: error
+            ? const Color(0xFFB00020)
+            : const Color(0xFF4CAF50),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         margin: const EdgeInsets.all(16),
@@ -67,13 +69,11 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-void _onLoginPressed() {
-  Navigator.of(context).pushReplacement(
-    MaterialPageRoute(
-      builder: (_) => HomeScreen(studentId: 'test-user'),
-    ),
-  );
-}
+  void _onLoginPressed() {
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => HomeScreen(studentId: 'test-user')),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -121,9 +121,7 @@ class _LogoSection extends StatelessWidget {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 12),
-      child: Center(
-        child: Image.asset('assets/images/logo_calico.png'),
-      ),
+      child: Center(child: Image.asset('assets/images/logo_calico.png')),
     );
   }
 }
@@ -233,7 +231,9 @@ class _RegisterLink extends StatelessWidget {
         height: 48,
         child: ElevatedButton(
           onPressed: () {
-            // TODO: Navigator.pushReplacementNamed(context, '/register');
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(builder: (_) => const RegisterScreen()),
+            );
           },
           style: ElevatedButton.styleFrom(
             backgroundColor: AppColors.inputBackground,

@@ -1,3 +1,4 @@
+import 'package:calico_mobile_flutter/features/auth/presentation/screens/login_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/constants/app_colors.dart';
@@ -7,6 +8,7 @@ import '../../data/repositories/auth_repository_impl.dart';
 import '../controllers/register_controller.dart';
 import '../../../home/presentation/screens/home_screen.dart';
 import '../../../../core/validators/form_validators.dart';
+import '../screens/login_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -21,7 +23,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
-
 
   @override
   void initState() {
@@ -51,8 +52,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message, style: GoogleFonts.lexend(fontSize: 14)),
-        backgroundColor:
-            error ? const Color(0xFFB00020) : const Color(0xFF4CAF50),
+        backgroundColor: error
+            ? const Color(0xFFB00020)
+            : const Color(0xFF4CAF50),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         margin: const EdgeInsets.all(16),
@@ -74,7 +76,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (_formKey.currentState?.validate() ?? false) {
       // Collapse any sequence of internal whitespace to a single space
       // so "John     Smith" is stored as "John Smith".
-      final cleanName = _nameController.text.trim().replaceAll(RegExp(r'\s+'), ' ');
+      final cleanName = _nameController.text.trim().replaceAll(
+        RegExp(r'\s+'),
+        ' ',
+      );
 
       _controller.register(
         name: cleanName,
@@ -120,13 +125,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   ),
                   _RegisterButton(
                     isLoading: _controller.isLoading,
-                    onPressed: _controller.isLoading ? null : _onRegisterPressed,
+                    onPressed: _controller.isLoading
+                        ? null
+                        : _onRegisterPressed,
                   ),
                   _LoginLink(),
                 ],
               ),
             ),
-
           ],
         ),
       ),
@@ -136,17 +142,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
 // ─── Private sub-widgets ────────────────────────────────────────────────────
 // Kept in the same file because they are small, have no independent lifecycle,
-// and are only used by RegisterScreen. 
+// and are only used by RegisterScreen.
 
-class _LogoSection extends StatelessWidget { // TODO!!!!!!!: Pass this to a file for sharing widgets when we start to reuse them.
+class _LogoSection extends StatelessWidget {
+  // TODO!!!!!!!: Pass this to a file for sharing widgets when we start to reuse them.
   @override
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 12),
-      child: Center(
-        child: Image.asset('assets/images/logo_calico.png')
-      ),
+      child: Center(child: Image.asset('assets/images/logo_calico.png')),
     );
   }
 }
@@ -197,18 +202,15 @@ class _InputField extends StatelessWidget {
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
-            borderSide:
-                const BorderSide(color: AppColors.primary, width: 1.5),
+            borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
           ),
           errorBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
-            borderSide:
-                const BorderSide(color: Color(0xFFB00020), width: 1.0),
+            borderSide: const BorderSide(color: Color(0xFFB00020), width: 1.0),
           ),
           focusedErrorBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
-            borderSide:
-                const BorderSide(color: Color(0xFFB00020), width: 1.5),
+            borderSide: const BorderSide(color: Color(0xFFB00020), width: 1.5),
           ),
           errorStyle: AppTextStyles.errorText,
         ),
@@ -264,7 +266,9 @@ class _LoginLink extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
       child: GestureDetector(
         onTap: () {
-          // TODO!!!!!!!: Navigator.pushReplacementNamed(context, '/login');
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const LoginScreen()),
+          );
         },
         child: Text(
           'Already have an account? Login',
