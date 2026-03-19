@@ -5,7 +5,6 @@ import '../../../../core/constants/app_text_styles.dart';
 import '../../../../core/network/api_client.dart';
 import '../../data/repositories/auth_repository_impl.dart';
 import '../controllers/register_controller.dart';
-import '../widgets/decorative_bottom.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -80,54 +79,47 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      // Avoids overlap with system status bar and navigation bar.
       body: SafeArea(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Form(
-              key: _formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _LogoSection(),
-                  _InputField(
-                    label: 'Full Name',
-                    controller: _nameController,
-                    keyboardType: TextInputType.name,
-                    textCapitalization: TextCapitalization.words,
-                    validator: (v) => (v == null || v.trim().isEmpty)
-                        ? 'Name is required'
-                        : null,
-                  ),
-                  _InputField(
-                    label: 'Email',
-                    controller: _emailController,
-                    keyboardType: TextInputType.emailAddress,
-                    validator: (v) => (v == null || !v.contains('@'))
-                        ? 'Enter a valid email'
-                        : null,
-                  ),
-                  _InputField(
-                    label: 'Password',
-                    controller: _passwordController,
-                    obscureText: true,
-                    validator: (v) => (v == null || v.length < 6)
-                        ? 'Minimum 6 characters'
-                        : null,
-                  ),
-                  _RegisterButton(
-                    isLoading: _controller.isLoading,
-                    onPressed: _controller.isLoading ? null : _onRegisterPressed,
-                  ),
-                  _LoginLink(),
-                ],
-              ),
+        child: SingleChildScrollView(
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _LogoSection(),
+                _InputField(
+                  label: 'Full Name',
+                  controller: _nameController,
+                  keyboardType: TextInputType.name,
+                  textCapitalization: TextCapitalization.words,
+                  validator: (v) => (v == null || v.trim().isEmpty)
+                      ? 'Name is required'
+                      : null,
+                ),
+                _InputField(
+                  label: 'Email',
+                  controller: _emailController,
+                  keyboardType: TextInputType.emailAddress,
+                  validator: (v) => (v == null || !v.contains('@'))
+                      ? 'Enter a valid email'
+                      : null,
+                ),
+                _InputField(
+                  label: 'Password',
+                  controller: _passwordController,
+                  obscureText: true,
+                  validator: (v) => (v == null || v.length < 6)
+                      ? 'Minimum 6 characters'
+                      : null,
+                ),
+                _RegisterButton(
+                  isLoading: _controller.isLoading,
+                  onPressed: _controller.isLoading ? null : _onRegisterPressed,
+                ),
+                _LoginLink(),
+              ],
             ),
-
-            // ── Decorative illustration (bottom 320 px in the design) ────
-            const DecorativeBottom(),
-          ],
+          ),
         ),
       ),
     );
