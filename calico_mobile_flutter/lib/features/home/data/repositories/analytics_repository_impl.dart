@@ -2,8 +2,6 @@ import '../../../../core/network/api_client.dart';
 import '../../domain/repositories/analytics_repository.dart';
 import '../models/available_tutor_model.dart';
 
-/// Calls GET /analytics/available-tutors?course=<courseId>
-/// and maps the response to a list of [AvailableTutorModel].
 class AnalyticsRepositoryImpl implements AnalyticsRepository {
   final ApiClient _apiClient;
 
@@ -20,5 +18,19 @@ class AnalyticsRepositoryImpl implements AnalyticsRepository {
         .whereType<Map<String, dynamic>>()
         .map(AvailableTutorModel.fromJson)
         .toList();
+  }
+
+  @override
+  Future<AvailableTutorModel?> getReturningTutor(
+    String studentId,
+    String courseId,
+  ) async {
+    final data = await _apiClient.get(
+      '/analytics/returning-tutor',
+      query: {'student': studentId, 'course': courseId},
+    );
+    final raw = data['tutor'];
+    if (raw == null) return null;
+    return AvailableTutorModel.fromJson(raw as Map<String, dynamic>);
   }
 }

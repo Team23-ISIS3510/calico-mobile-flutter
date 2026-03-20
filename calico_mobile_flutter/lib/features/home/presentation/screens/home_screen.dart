@@ -145,7 +145,10 @@ class _HomeScreenState extends State<HomeScreen> {
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => CourseDetailScreen(course: c),
+                  builder: (_) => CourseDetailScreen(
+                    course: c,
+                    studentId: widget.studentId,
+                  ),
                 ),
               ),
             ),

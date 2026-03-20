@@ -8,6 +8,8 @@ class AvailableTutorModel {
   final DateTime? nextSlotStart;
   final DateTime? nextSlotEnd;
   final int availableSlotsCount;
+  // Present only on the "returning tutor" result.
+  final int? bookingCount;
 
   const AvailableTutorModel({
     required this.id,
@@ -19,6 +21,7 @@ class AvailableTutorModel {
     this.nextSlotStart,
     this.nextSlotEnd,
     required this.availableSlotsCount,
+    this.bookingCount,
   });
 
   factory AvailableTutorModel.fromJson(Map<String, dynamic> json) {
@@ -38,6 +41,7 @@ class AvailableTutorModel {
           : null,
       availableSlotsCount:
           (json['availableSlotsCount'] as num?)?.toInt() ?? 0,
+      bookingCount: (json['bookingCount'] as num?)?.toInt(),
     );
   }
 }
