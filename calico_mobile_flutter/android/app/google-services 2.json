@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "1056254794426",
+    "project_id": "calico-5980a",
+    "storage_bucket": "calico-5980a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1056254794426:android:120a84082194c7df188083",
+        "android_client_info": {
+          "package_name": "com.example.calico_mobile_flutter"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1056254794426-rb68e1oa14lprk55b2f7lpprvfp4ohj7.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC1Z96v6i6jP6iogkk4mgcHzEp4_bEXC8A"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1056254794426-rb68e1oa14lprk55b2f7lpprvfp4ohj7.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "1056254794426-mi0cikdvs9due079i0srufprcfiok1bh.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "co.elipson.co"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

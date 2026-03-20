@@ -5,6 +5,7 @@ import 'package:calico_mobile_flutter/core/network/api_client.dart';
 import 'package:calico_mobile_flutter/features/profile/data/repositories/profile_repository_impl.dart';
 import 'package:calico_mobile_flutter/features/profile/domain/models/user_profile.dart';
 import 'package:calico_mobile_flutter/features/profile/presentation/controllers/profile_controller.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String userId;
@@ -202,7 +203,12 @@ class _ChangeModeButton extends StatelessWidget {
       child: SizedBox(
         height: 52,
         child: ElevatedButton(
-          onPressed: () {},
+          onPressed: () async {
+            final url = Uri.parse('https://forms.gle/16c7j2dKP4L9wLMG7');
+            if (await canLaunchUrl(url)) {
+              await launchUrl(url, mode: LaunchMode.externalApplication);
+            }
+          },
           style: ElevatedButton.styleFrom(
             backgroundColor: AppColors.primary,
             elevation: 0,
@@ -210,7 +216,7 @@ class _ChangeModeButton extends StatelessWidget {
               borderRadius: BorderRadius.circular(30),
             ),
           ),
-          child: Text('Change to Tutor mode', style: AppTextStyles.buttonLabel),
+          child: Text('¡Quiero ser tutor!', style: AppTextStyles.buttonLabel),
         ),
       ),
     );
