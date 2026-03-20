@@ -16,7 +16,7 @@ import '../../data/repositories/session_repository_impl.dart';
 import '../controllers/home_controller.dart';
 import 'course_detail_screen.dart';
 import 'session_detail_screen.dart';
-import 'package:calico_mobile_flutter/features/auth/presentation/screens/profile_screen.dart';
+import 'package:calico_mobile_flutter/features/profile/presentation/screens/profile_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   /// Firebase UID of the logged-in student. Pass empty string for guest mode.
@@ -85,7 +85,9 @@ class _HomeScreenState extends State<HomeScreen> {
           if (i == 1) {
             Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => const ProfileScreen()),
+              MaterialPageRoute(
+                builder: (_) => ProfileScreen(userId: widget.studentId),
+              ),
             );
           } else {
             setState(() => _selectedTab = i);
@@ -154,9 +156,11 @@ class _HomeScreenState extends State<HomeScreen> {
         // ── Sessions ─────────────────────────────────────────────────────
         const SectionHeader('Upcoming Sessions'),
         if (_controller.sessions.isEmpty)
-          EmptyStateView(widget.studentId.isEmpty
-              ? 'Sign in to see your sessions'
-              : 'No upcoming sessions')
+          EmptyStateView(
+            widget.studentId.isEmpty
+                ? 'Sign in to see your sessions'
+                : 'No upcoming sessions',
+          )
         else
           ..._controller.sessions.map(
             (s) => SessionCard(
@@ -186,9 +190,7 @@ class _HomeHeader extends StatelessWidget {
       color: AppColors.background,
       child: const Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          AppLogo(),
-        ],
+        children: [AppLogo()],
       ),
     );
   }

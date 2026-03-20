@@ -14,9 +14,7 @@ class ApiClient {
     Map<String, String>? query,
   }) async {
     try {
-      final uri = Uri.parse('$_baseUrl$path').replace(
-        queryParameters: query,
-      );
+      final uri = Uri.parse('$_baseUrl$path').replace(queryParameters: query);
       final response = await _client.get(
         uri,
         headers: const {'Content-Type': 'application/json'},
@@ -48,6 +46,25 @@ class ApiClient {
     }
   }
 
+  Future<Map<String, dynamic>> patch(
+    String path, {
+    required Map<String, dynamic> body,
+  }) async {
+    try {
+      final uri = Uri.parse('$_baseUrl$path');
+      final response = await _client.patch(
+        uri,
+        headers: const {'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      );
+      return _handleResponse(response);
+    } on http.ClientException catch (e) {
+      throw AppException('Connection error: ${e.message}');
+    } on FormatException {
+      throw const AppException('Invalid server response.');
+    }
+  }
+
   Map<String, dynamic> _handleResponse(http.Response response) {
     final decoded = jsonDecode(response.body);
     if (response.statusCode >= 200 && response.statusCode < 300) {
@@ -55,7 +72,7 @@ class ApiClient {
     }
     final message =
         (decoded as Map<String, dynamic>)['message']?.toString() ??
-            'Request failed';
+        'Request failed';
     throw AppException(message, statusCode: response.statusCode);
   }
 }
