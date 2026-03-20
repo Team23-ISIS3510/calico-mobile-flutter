@@ -32,8 +32,9 @@ class AuthRepositoryImpl implements AuthRepository {
       '/auth/login',
       body: {'email': request.email, 'password': request.password},
     );
-    // Backend returns the user object — id is the Firebase UID.
-    return data['id']?.toString() ?? '';
+    // Backend proxies the Firebase Identity Toolkit response which uses
+    // 'localId' (not 'id') for the Firebase UID.
+    return data['localId']?.toString() ?? '';
   }
 
   @override

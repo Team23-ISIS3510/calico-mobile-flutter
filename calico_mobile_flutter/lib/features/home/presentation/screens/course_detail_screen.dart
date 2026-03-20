@@ -1,12 +1,41 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_text_styles.dart';
+import '../../../../core/network/api_client.dart';
+import '../../data/models/available_tutor_model.dart';
 import '../../data/models/course_model.dart';
+import '../../data/repositories/analytics_repository_impl.dart';
+import '../widgets/tutor_carousel_card.dart';
 
-class CourseDetailScreen extends StatelessWidget {
+class CourseDetailScreen extends StatefulWidget {
   final CourseModel course;
 
   const CourseDetailScreen({super.key, required this.course});
+
+  @override
+  State<CourseDetailScreen> createState() => _CourseDetailScreenState();
+}
+
+class _CourseDetailScreenState extends State<CourseDetailScreen> {
+  // null = still loading, [] = loaded but none found
+  List<AvailableTutorModel>? _tutors;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTutors();
+  }
+
+  Future<void> _loadTutors() async {
+    try {
+      final tutors = await AnalyticsRepositoryImpl(ApiClient())
+          .getAvailableTutors(widget.course.id);
+      if (mounted) setState(() => _tutors = tutors);
+    } catch (_) {
+      if (mounted) setState(() => _tutors = []);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -20,7 +49,7 @@ class CourseDetailScreen extends StatelessWidget {
           icon: const Icon(Icons.arrow_back, color: AppColors.brown),
           onPressed: () => Navigator.pop(context),
         ),
-        title: Text(course.name, style: AppTextStyles.itemTitle),
+        title: Text(widget.course.name, style: AppTextStyles.itemTitle),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -42,21 +71,103 @@ class CourseDetailScreen extends StatelessWidget {
             ),
             const SizedBox(height: 24),
 
-            // Course info cards
+            // Course info card
             _InfoCard(children: [
-              _InfoRow('Name', course.name),
+              _InfoRow('Name', widget.course.name),
               _Divider(),
-              _InfoRow('Code', course.code),
+              _InfoRow('Code', widget.course.code),
               _Divider(),
-              _InfoRow('Credits', course.credits.toString()),
+              _InfoRow('Credits', widget.course.credits.toString()),
               _Divider(),
-              _InfoRow('Faculty', course.faculty),
+              _InfoRow('Faculty', widget.course.faculty),
             ]),
 
-            
+            // Top Rated & Available Soon — only visible when loading or has data
+            if (_tutors == null || _tutors!.isNotEmpty) ...[
+              const SizedBox(height: 28),
+              _TutorSection(tutors: _tutors),
+            ],
+
+            const SizedBox(height: 16),
           ],
         ),
       ),
+    );
+  }
+}
+
+// ─── Tutor section ───────────────────────────────────────────────────────────
+
+class _TutorSection extends StatelessWidget {
+  final List<AvailableTutorModel>? tutors;
+
+  const _TutorSection({required this.tutors});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Section title + count badge
+        Row(
+          children: [
+            Text('Top Rated & Available Soon',
+                style: AppTextStyles.sectionTitle),
+            if (tutors != null && tutors!.isNotEmpty) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AppColors.primary,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  '${tutors!.length}',
+                  style: GoogleFonts.lexend(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Available in the next 4 hours for this course',
+          style: AppTextStyles.itemSubtitle,
+        ),
+        const SizedBox(height: 14),
+
+        // Loading spinner or horizontal carousel
+        if (tutors == null)
+          const SizedBox(
+            height: 100,
+            child: Center(
+              child: SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: AppColors.primary,
+                ),
+              ),
+            ),
+          )
+        else
+          SizedBox(
+            height: 138,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              clipBehavior: Clip.none,
+              itemCount: tutors!.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 12),
+              itemBuilder: (_, i) => TutorCarouselCard(tutor: tutors![i]),
+            ),
+          ),
+      ],
     );
   }
 }

@@ -29,41 +29,51 @@ class SessionCard extends StatelessWidget {
         constraints: const BoxConstraints(minHeight: 90),
         color: AppColors.background,
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Calendar icon in primary (orange) square
-                Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: AppColors.primary,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(
-                    Icons.calendar_today,
-                    size: 24,
-                    color: AppColors.black,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(session.formattedDate,
-                        style: AppTextStyles.itemTitle),
-                    Text(session.displayTutor,
-                        style: AppTextStyles.itemSubtitle),
-                    if (session.displayCourse.isNotEmpty)
-                      Text(session.displayCourse,
-                          style: AppTextStyles.itemSubtitle),
-                  ],
-                ),
-              ],
+            // Calendar icon in primary (orange) square
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: AppColors.primary,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(
+                Icons.calendar_today,
+                size: 24,
+                color: AppColors.black,
+              ),
             ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    session.formattedDate,
+                    style: AppTextStyles.itemTitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    session.displayTutor,
+                    style: AppTextStyles.itemSubtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (session.displayCourse.isNotEmpty)
+                    Text(
+                      session.displayCourse,
+                      style: AppTextStyles.itemSubtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
             const Icon(Icons.chevron_right, size: 28, color: AppColors.black),
           ],
         ),

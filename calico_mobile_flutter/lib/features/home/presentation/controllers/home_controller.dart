@@ -30,7 +30,6 @@ class HomeController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // Fetch courses and sessions in parallel.
       final results = await Future.wait([
         _courseRepo.getCourses(),
         _sessionRepo.getStudentSessions(studentId),
