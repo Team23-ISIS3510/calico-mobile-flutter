@@ -90,35 +90,39 @@ class _LoginScreenState extends State<LoginScreen> {
         child: Form(
           key: _formKey,
           autovalidateMode: AutovalidateMode.onUserInteraction,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _LogoSection(),
-              _InputField(
-                label: 'Username or Email',
-                controller: _emailController,
-                keyboardType: TextInputType.emailAddress,
-                validator: FormValidators.email,
-              ),
-              _InputField(
-                label: 'Password',
-                controller: _passwordController,
-                obscureText: true,
-                validator: FormValidators.password,
-              ),
-              _LoginButton(
-                isLoading: _controller.isEmailLoading,
-                onPressed: _controller.isEmailLoading ? null : _onLoginPressed,
-              ),
-              _GoogleButton(
-                isLoading: _controller.isGoogleLoading,
-                onPressed: _controller.isGoogleLoading
-                    ? null
-                    : _onGooglePressed,
-              ),
-              _RegisterLink(),
-              _ForgotPasswordLink(),
-            ],
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _LogoSection(),
+                _InputField(
+                  label: 'Username or Email',
+                  controller: _emailController,
+                  keyboardType: TextInputType.emailAddress,
+                  validator: FormValidators.email,
+                ),
+                _InputField(
+                  label: 'Password',
+                  controller: _passwordController,
+                  obscureText: true,
+                  validator: FormValidators.password,
+                ),
+                _LoginButton(
+                  isLoading: _controller.isEmailLoading,
+                  onPressed: _controller.isEmailLoading
+                      ? null
+                      : _onLoginPressed,
+                ),
+                _GoogleButton(
+                  isLoading: _controller.isGoogleLoading,
+                  onPressed: _controller.isGoogleLoading
+                      ? null
+                      : _onGooglePressed,
+                ),
+                _RegisterLink(),
+                _ForgotPasswordLink(),
+              ],
+            ),
           ),
         ),
       ),

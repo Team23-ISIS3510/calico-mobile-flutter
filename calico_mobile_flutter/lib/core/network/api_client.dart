@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../errors/app_exception.dart';
 
 class ApiClient {
   static const String _baseUrl = 'http://localhost:3000';
+  static const Duration _timeout = Duration(seconds: 15);
 
   final http.Client _client;
 
@@ -15,11 +17,14 @@ class ApiClient {
   }) async {
     try {
       final uri = Uri.parse('$_baseUrl$path').replace(queryParameters: query);
-      final response = await _client.get(
-        uri,
-        headers: const {'Content-Type': 'application/json'},
-      );
+      final response = await _client
+          .get(uri, headers: const {'Content-Type': 'application/json'})
+          .timeout(_timeout);
       return _handleResponse(response);
+    } on TimeoutException {
+      throw const AppException(
+        'Request timed out. Check your connection and try again.',
+      );
     } on http.ClientException catch (e) {
       throw AppException('Connection error: ${e.message}');
     } on FormatException {
@@ -33,12 +38,18 @@ class ApiClient {
   }) async {
     try {
       final uri = Uri.parse('$_baseUrl$path');
-      final response = await _client.post(
-        uri,
-        headers: const {'Content-Type': 'application/json'},
-        body: jsonEncode(body),
-      );
+      final response = await _client
+          .post(
+            uri,
+            headers: const {'Content-Type': 'application/json'},
+            body: jsonEncode(body),
+          )
+          .timeout(_timeout);
       return _handleResponse(response);
+    } on TimeoutException {
+      throw const AppException(
+        'Request timed out. Check your connection and try again.',
+      );
     } on http.ClientException catch (e) {
       throw AppException('Connection error: ${e.message}');
     } on FormatException {
@@ -52,12 +63,18 @@ class ApiClient {
   }) async {
     try {
       final uri = Uri.parse('$_baseUrl$path');
-      final response = await _client.patch(
-        uri,
-        headers: const {'Content-Type': 'application/json'},
-        body: jsonEncode(body),
-      );
+      final response = await _client
+          .patch(
+            uri,
+            headers: const {'Content-Type': 'application/json'},
+            body: jsonEncode(body),
+          )
+          .timeout(_timeout);
       return _handleResponse(response);
+    } on TimeoutException {
+      throw const AppException(
+        'Request timed out. Check your connection and try again.',
+      );
     } on http.ClientException catch (e) {
       throw AppException('Connection error: ${e.message}');
     } on FormatException {
