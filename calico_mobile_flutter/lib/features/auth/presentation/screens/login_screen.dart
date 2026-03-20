@@ -108,12 +108,16 @@ class _LoginScreenState extends State<LoginScreen> {
                   validator: FormValidators.password,
                 ),
                 _LoginButton(
-                  isLoading: _controller.isLoading,
-                  onPressed: _controller.isLoading ? null : _onLoginPressed,
+                  isLoading: _controller.isEmailLoading,
+                  onPressed: _controller.isEmailLoading
+                      ? null
+                      : _onLoginPressed,
                 ),
                 _GoogleButton(
-                  isLoading: _controller.isLoading,
-                  onPressed: _controller.isLoading ? null : _onGooglePressed,
+                  isLoading: _controller.isGoogleLoading,
+                  onPressed: _controller.isGoogleLoading
+                      ? null
+                      : _onGooglePressed,
                 ),
                 _RegisterLink(),
                 _ForgotPasswordLink(),
