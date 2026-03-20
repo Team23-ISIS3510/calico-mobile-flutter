@@ -3,7 +3,8 @@ import 'package:http/http.dart' as http;
 import '../errors/app_exception.dart';
 
 class ApiClient {
-  static const String _baseUrl = 'http://localhost:3000';
+  // CHANGE if needed in iOS to https://localhost:3000
+  static const String _baseUrl = 'http://192.168.80.19:3000';
 
   final http.Client _client;
 
