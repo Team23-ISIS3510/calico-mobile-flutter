@@ -70,9 +70,16 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _onLoginPressed() {
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => HomeScreen(studentId: 'test-user')),
-    );
+    if (_formKey.currentState?.validate() ?? false) {
+      _controller.login(
+        email: _emailController.text.trim(),
+        password: _passwordController.text,
+      );
+    }
+  }
+
+  void _onGooglePressed() {
+    _controller.loginWithGoogle();
   }
 
   @override
@@ -102,6 +109,10 @@ class _LoginScreenState extends State<LoginScreen> {
               _LoginButton(
                 isLoading: _controller.isLoading,
                 onPressed: _controller.isLoading ? null : _onLoginPressed,
+              ),
+              _GoogleButton(
+                isLoading: _controller.isLoading,
+                onPressed: _controller.isLoading ? null : _onGooglePressed,
               ),
               _RegisterLink(),
               _ForgotPasswordLink(),
@@ -216,6 +227,54 @@ class _LoginButton extends StatelessWidget {
                   ),
                 )
               : Text('Log In', style: AppTextStyles.buttonLabel),
+        ),
+      ),
+    );
+  }
+}
+
+class _GoogleButton extends StatelessWidget {
+  final bool isLoading;
+  final VoidCallback? onPressed;
+
+  const _GoogleButton({required this.isLoading, required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: SizedBox(
+        height: 48,
+        child: OutlinedButton.icon(
+          onPressed: onPressed,
+          icon: Container(
+            width: 20,
+            height: 20,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(2),
+            ),
+            child: const Text(
+              'G',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Color(0xFF4285F4),
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+              ),
+            ),
+          ),
+          label: Text(
+            'Continue with Google',
+            style: AppTextStyles.buttonLabel.copyWith(color: Colors.black87),
+          ),
+          style: OutlinedButton.styleFrom(
+            backgroundColor: Colors.white,
+            side: const BorderSide(color: Colors.black26),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
         ),
       ),
     );
