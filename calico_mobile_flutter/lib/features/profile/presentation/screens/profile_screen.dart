@@ -62,10 +62,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       profile: _controller.profile!,
                       onEdit: _editDescription,
                     ),
-                    _SubjectsSection(
-                      profile: _controller.profile!,
-                      onEdit: _editCourses,
-                    ),
                     _ChangeModeButton(),
                   ],
                 ),
@@ -115,66 +111,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
     if (result != null) {
       await _controller.updateProfile(description: result);
-    }
-  }
-
-  void _editCourses() async {
-    final controller = TextEditingController(
-      text: (_controller.profile?.courses ?? []).join(', '),
-    );
-    final result = await showDialog<String>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: Text('Edit subjects', style: AppTextStyles.itemTitle),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Separate subjects with commas',
-              style: AppTextStyles.itemSubtitle,
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: controller,
-              style: AppTextStyles.itemTitle.copyWith(
-                fontWeight: FontWeight.w400,
-              ),
-              decoration: InputDecoration(
-                hintText: 'e.g. Math, Physics, Chemistry',
-                hintStyle: AppTextStyles.itemSubtitle,
-                filled: true,
-                fillColor: AppColors.inputBackground,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide.none,
-                ),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('Cancel', style: AppTextStyles.linkText),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, controller.text.trim()),
-            child: Text(
-              'Save',
-              style: AppTextStyles.linkText.copyWith(color: AppColors.primary),
-            ),
-          ),
-        ],
-      ),
-    );
-    if (result != null) {
-      final courses = result
-          .split(',')
-          .map((s) => s.trim())
-          .where((s) => s.isNotEmpty)
-          .toList();
-      await _controller.updateProfile(courses: courses);
     }
   }
 }
@@ -252,59 +188,6 @@ class _AboutSection extends StatelessWidget {
               color: Colors.black87,
             ),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SubjectsSection extends StatelessWidget {
-  final UserProfile profile;
-  final VoidCallback onEdit;
-  const _SubjectsSection({required this.profile, required this.onEdit});
-
-  @override
-  Widget build(BuildContext context) {
-    final courses = profile.courses ?? [];
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Subjects',
-                style: AppTextStyles.sectionTitle.copyWith(fontSize: 16),
-              ),
-              IconButton(
-                icon: const Icon(Icons.edit, size: 18, color: AppColors.brown),
-                onPressed: onEdit,
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          courses.isEmpty
-              ? Text(
-                  'No subjects yet. Tap the edit button to add some.',
-                  style: AppTextStyles.itemSubtitle,
-                )
-              : Wrap(
-                  spacing: 8,
-                  children: courses
-                      .map(
-                        (s) => Chip(
-                          label: Text(s, style: AppTextStyles.itemTitle),
-                          backgroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(20),
-                            side: const BorderSide(color: Colors.black26),
-                          ),
-                        ),
-                      )
-                      .toList(),
-                ),
         ],
       ),
     );

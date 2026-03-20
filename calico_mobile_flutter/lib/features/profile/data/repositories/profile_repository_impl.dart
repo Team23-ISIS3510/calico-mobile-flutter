@@ -19,6 +19,7 @@ class ProfileRepositoryImpl implements ProfileRepository {
     String? description,
     List<String>? courses,
   }) async {
+    print('Updating profile: description=$description, courses=$courses');
     final data = await _apiClient.patch(
       '/users/$userId',
       body: {
@@ -26,6 +27,7 @@ class ProfileRepositoryImpl implements ProfileRepository {
         if (courses != null) 'courses': courses,
       },
     );
+    print('Response: $data');
     return UserProfile.fromJson(data);
   }
 }
