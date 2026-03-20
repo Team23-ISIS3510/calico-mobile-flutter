@@ -1,27 +1,33 @@
 import 'package:flutter/foundation.dart';
+import '../../data/models/available_tutor_model.dart';
 import '../../data/models/course_model.dart';
 import '../../data/models/session_model.dart';
+import '../../domain/repositories/analytics_repository.dart';
 import '../../domain/repositories/course_repository.dart';
 import '../../domain/repositories/session_repository.dart';
 
 enum HomeStatus { idle, loading, success, failure }
 
-/// Loads courses and sessions in parallel, and handles live search filtering.
+/// Loads courses, sessions, and available tutors per course.
+/// Tutors load in the background after the main content is shown.
 class HomeController extends ChangeNotifier {
   final CourseRepository _courseRepo;
   final SessionRepository _sessionRepo;
+  final AnalyticsRepository _analyticsRepo;
 
-  HomeController(this._courseRepo, this._sessionRepo);
+  HomeController(this._courseRepo, this._sessionRepo, this._analyticsRepo);
 
   HomeStatus _status = HomeStatus.idle;
   List<CourseModel> _allCourses = [];
   List<CourseModel> _filteredCourses = [];
   List<SessionModel> _sessions = [];
+  final Map<String, List<AvailableTutorModel>> _availableTutors = {};
   String? _error;
 
   HomeStatus get status => _status;
   List<CourseModel> get courses => _filteredCourses;
   List<SessionModel> get sessions => _sessions;
+  Map<String, List<AvailableTutorModel>> get availableTutors => _availableTutors;
   String? get error => _error;
   bool get isLoading => _status == HomeStatus.loading;
 
@@ -30,7 +36,6 @@ class HomeController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // Fetch courses and sessions in parallel.
       final results = await Future.wait([
         _courseRepo.getCourses(),
         _sessionRepo.getStudentSessions(studentId),
@@ -40,12 +45,28 @@ class HomeController extends ChangeNotifier {
       _sessions = results[1] as List<SessionModel>;
       _filteredCourses = List.from(_allCourses);
       _status = HomeStatus.success;
+      notifyListeners();
+
+      // Load available tutors per course in the background so the main
+      // content is shown immediately. Each course updates independently.
+      _loadAvailableTutors();
     } on Exception catch (e) {
       _error = e.toString();
       _status = HomeStatus.failure;
+      notifyListeners();
     }
+  }
 
-    notifyListeners();
+  Future<void> _loadAvailableTutors() async {
+    await Future.wait(_allCourses.map((course) async {
+      try {
+        final tutors = await _analyticsRepo.getAvailableTutors(course.id);
+        _availableTutors[course.id] = tutors;
+        notifyListeners();
+      } catch (_) {
+        // Silently skip courses with no data or failed requests.
+      }
+    }));
   }
 
   /// Filters the courses list by name or code. Call on every search keystroke.
