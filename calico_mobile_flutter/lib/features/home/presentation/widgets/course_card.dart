@@ -29,35 +29,43 @@ class CourseCard extends StatelessWidget {
         constraints: const BoxConstraints(minHeight: 72),
         color: AppColors.background,
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Row(
-              children: [
-                // Book icon in beige square
-                Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: AppColors.inputBackground,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(
-                    Icons.menu_book_outlined,
-                    size: 24,
-                    color: AppColors.black,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(course.name, style: AppTextStyles.itemTitle),
-                    Text(course.code, style: AppTextStyles.itemSubtitle),
-                  ],
-                ),
-              ],
+            // Book icon in beige square
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: AppColors.inputBackground,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(
+                Icons.menu_book_outlined,
+                size: 24,
+                color: AppColors.black,
+              ),
             ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    course.name,
+                    style: AppTextStyles.itemTitle,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    course.code,
+                    style: AppTextStyles.itemSubtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
             const Icon(Icons.chevron_right, size: 28, color: AppColors.black),
           ],
         ),
