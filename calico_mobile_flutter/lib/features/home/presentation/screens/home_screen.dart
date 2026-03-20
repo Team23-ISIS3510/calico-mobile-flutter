@@ -1,15 +1,22 @@
+import 'package:calico_mobile_flutter/features/home/data/models/course_model.dart';
+import 'package:calico_mobile_flutter/features/home/data/models/session_model.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_text_styles.dart';
 import '../../../../core/network/api_client.dart';
-import '../../data/models/course_model.dart';
-import '../../data/models/session_model.dart';
+import '../../../../core/widgets/app_logo.dart';
+import '../../../../core/widgets/app_bottom_nav.dart';
+import '../../../../core/widgets/section_header.dart';
+import '../../../../core/widgets/empty_state_view.dart';
 import '../../data/repositories/course_repository_impl.dart';
+import '../widgets/course_card.dart';
+import '../widgets/session_card.dart';
 import '../../data/repositories/session_repository_impl.dart';
 import '../controllers/home_controller.dart';
 import 'course_detail_screen.dart';
 import 'session_detail_screen.dart';
+import 'package:calico_mobile_flutter/features/auth/presentation/screens/profile_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   /// Firebase UID of the logged-in student. Pass empty string for guest mode.
@@ -72,13 +79,17 @@ class _HomeScreenState extends State<HomeScreen> {
           Expanded(child: _buildBody()),
         ],
       ),
-      bottomNavigationBar: _BottomNav(
+      bottomNavigationBar: AppBottomNav(
         selectedIndex: _selectedTab,
         onTap: (i) {
           if (i == 1) {
-            // TODO!!!!!!: Navigator.push(context, MaterialPageRoute(builder: (_) => ProfileScreen()));
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ProfileScreen()),
+            );
+          } else {
+            setState(() => _selectedTab = i);
           }
-          setState(() => _selectedTab = i);
         },
       ),
     );
@@ -108,9 +119,12 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 16),
               TextButton(
                 onPressed: () => _controller.loadData(widget.studentId),
-                child: Text('Retry',
-                    style: AppTextStyles.buttonLabel
-                        .copyWith(color: AppColors.primary)),
+                child: Text(
+                  'Retry',
+                  style: AppTextStyles.buttonLabel.copyWith(
+                    color: AppColors.primary,
+                  ),
+                ),
               ),
             ],
           ),
@@ -121,35 +135,37 @@ class _HomeScreenState extends State<HomeScreen> {
     return ListView(
       children: [
         // ── Courses ──────────────────────────────────────────────────────
-        _SectionHeader('Courses'),
+        const SectionHeader('Courses'),
         if (_controller.courses.isEmpty)
-          _EmptyState('No courses found')
+          const EmptyStateView('No courses found')
         else
           ..._controller.courses.map(
-            (c) => _CourseItem(
+            (c) => CourseCard(
               course: c,
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                    builder: (_) => CourseDetailScreen(course: c)),
+                  builder: (_) => CourseDetailScreen(course: c),
+                ),
               ),
             ),
           ),
 
         // ── Sessions ─────────────────────────────────────────────────────
-        _SectionHeader('Upcoming Sessions'),
+        const SectionHeader('Upcoming Sessions'),
         if (_controller.sessions.isEmpty)
-          _EmptyState(widget.studentId.isEmpty
+          EmptyStateView(widget.studentId.isEmpty
               ? 'Sign in to see your sessions'
               : 'No upcoming sessions')
         else
           ..._controller.sessions.map(
-            (s) => _SessionItem(
+            (s) => SessionCard(
               session: s,
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                    builder: (_) => SessionDetailScreen(session: s)),
+                  builder: (_) => SessionDetailScreen(session: s),
+                ),
               ),
             ),
           ),
@@ -166,26 +182,12 @@ class _HomeHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      // padding: 16px 16px 8px — matches design spec
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
       color: AppColors.background,
-      child: Row(
+      child: const Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Image.asset(
-            'assets/images/logo_calico.png',
-            width: 178,
-            height: 79,
-            fit: BoxFit.contain,
-            errorBuilder: (_, __, ___) => Text(
-              'Calico',
-              style: GoogleFonts.lexend(
-                fontWeight: FontWeight.w700,
-                fontSize: 28,
-                color: AppColors.brown,
-              ),
-            ),
-          ),
+          AppLogo(),
         ],
       ),
     );
@@ -238,8 +240,10 @@ class _SearchBar extends StatelessWidget {
                     hintText: 'Course name or code',
                     hintStyle: AppTextStyles.searchHint,
                     border: InputBorder.none,
-                    contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 12,
+                    ),
                     isDense: true,
                   ),
                 ),
@@ -295,8 +299,11 @@ class _CourseItem extends StatelessWidget {
                     color: AppColors.inputBackground,
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(Icons.menu_book_outlined,
-                      size: 24, color: AppColors.black),
+                  child: const Icon(
+                    Icons.menu_book_outlined,
+                    size: 24,
+                    color: AppColors.black,
+                  ),
                 ),
                 const SizedBox(width: 16),
                 // Name + code
@@ -349,8 +356,11 @@ class _SessionItem extends StatelessWidget {
                     color: AppColors.primary,
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(Icons.calendar_today,
-                      size: 24, color: AppColors.black),
+                  child: const Icon(
+                    Icons.calendar_today,
+                    size: 24,
+                    color: AppColors.black,
+                  ),
                 ),
                 const SizedBox(width: 16),
                 // Date + tutor + course
@@ -358,13 +368,16 @@ class _SessionItem extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(session.formattedDate,
-                        style: AppTextStyles.itemTitle),
-                    Text(session.displayTutor,
-                        style: AppTextStyles.itemSubtitle),
+                    Text(session.formattedDate, style: AppTextStyles.itemTitle),
+                    Text(
+                      session.displayTutor,
+                      style: AppTextStyles.itemSubtitle,
+                    ),
                     if (session.displayCourse.isNotEmpty)
-                      Text(session.displayCourse,
-                          style: AppTextStyles.itemSubtitle),
+                      Text(
+                        session.displayCourse,
+                        style: AppTextStyles.itemSubtitle,
+                      ),
                   ],
                 ),
               ],
@@ -407,9 +420,13 @@ class _BottomNav extends StatelessWidget {
       unselectedItemColor: AppColors.brown,
       type: BottomNavigationBarType.fixed,
       selectedLabelStyle: GoogleFonts.lexend(
-          fontSize: 12, fontWeight: FontWeight.w500),
+        fontSize: 12,
+        fontWeight: FontWeight.w500,
+      ),
       unselectedLabelStyle: GoogleFonts.lexend(
-          fontSize: 12, fontWeight: FontWeight.w400),
+        fontSize: 12,
+        fontWeight: FontWeight.w400,
+      ),
       items: const [
         BottomNavigationBarItem(
           icon: Icon(Icons.home_outlined),

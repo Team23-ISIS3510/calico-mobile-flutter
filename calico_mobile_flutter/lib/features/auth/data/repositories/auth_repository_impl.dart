@@ -30,12 +30,18 @@ class AuthRepositoryImpl implements AuthRepository {
   Future<String> login(LoginRequest request) async {
     final data = await _apiClient.post(
       '/auth/login',
-      body: {
-        'email': request.email,
-        'password': request.password,
-      },
+      body: {'email': request.email, 'password': request.password},
     );
     // Backend returns the user object — id is the Firebase UID.
     return data['id']?.toString() ?? '';
+  }
+
+  @override
+  Future<String> loginWithGoogle(String idToken) async {
+    final data = await _apiClient.post(
+      '/auth/google',
+      body: {'idToken': idToken},
+    );
+    return data['user']['id']?.toString() ?? '';
   }
 }
