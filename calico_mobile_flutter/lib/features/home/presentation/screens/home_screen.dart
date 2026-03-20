@@ -1,4 +1,3 @@
-import 'package:calico_mobile_flutter/features/home/data/models/available_tutor_model.dart';
 import 'package:calico_mobile_flutter/features/home/data/models/course_model.dart';
 import 'package:calico_mobile_flutter/features/home/data/models/session_model.dart';
 import 'package:flutter/material.dart';
@@ -10,11 +9,9 @@ import '../../../../core/widgets/app_logo.dart';
 import '../../../../core/widgets/app_bottom_nav.dart';
 import '../../../../core/widgets/section_header.dart';
 import '../../../../core/widgets/empty_state_view.dart';
-import '../../data/repositories/analytics_repository_impl.dart';
 import '../../data/repositories/course_repository_impl.dart';
 import '../widgets/course_card.dart';
 import '../widgets/session_card.dart';
-import '../widgets/tutor_carousel_card.dart';
 import '../../data/repositories/session_repository_impl.dart';
 import '../controllers/home_controller.dart';
 import 'course_detail_screen.dart';
@@ -43,7 +40,6 @@ class _HomeScreenState extends State<HomeScreen> {
     _controller = HomeController(
       CourseRepositoryImpl(client),
       SessionRepositoryImpl(client),
-      AnalyticsRepositoryImpl(client),
     );
     _controller.addListener(_onUpdate);
     _controller.loadData(widget.studentId);
@@ -155,17 +151,6 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
 
-        // ── Top Rated & Available Soon ───────────────────────────────────
-        if (_controller.availableTutors.values.any((list) => list.isNotEmpty))
-          const SectionHeader('Top Rated & Available Soon'),
-        ..._controller.courses
-            .where((c) =>
-                (_controller.availableTutors[c.id] ?? []).isNotEmpty)
-            .map((c) => _CourseTutorCarousel(
-                  courseName: c.name,
-                  tutors: _controller.availableTutors[c.id]!,
-                )),
-
         // ── Sessions ─────────────────────────────────────────────────────
         const SectionHeader('Upcoming Sessions'),
         if (_controller.sessions.isEmpty)
@@ -192,41 +177,6 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 // ─── Private sub-widgets ────────────────────────────────────────────────────
-
-/// Renders a course sub-label followed by a horizontal carousel of tutors.
-class _CourseTutorCarousel extends StatelessWidget {
-  final String courseName;
-  final List<AvailableTutorModel> tutors;
-
-  const _CourseTutorCarousel({
-    required this.courseName,
-    required this.tutors,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-          child: Text(courseName, style: AppTextStyles.itemTitle),
-        ),
-        SizedBox(
-          height: 178,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: tutors.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 12),
-            itemBuilder: (_, i) => TutorCarouselCard(tutor: tutors[i]),
-          ),
-        ),
-        const SizedBox(height: 8),
-      ],
-    );
-  }
-}
 
 class _HomeHeader extends StatelessWidget {
   @override

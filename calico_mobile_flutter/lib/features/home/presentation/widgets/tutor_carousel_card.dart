@@ -3,43 +3,71 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../data/models/available_tutor_model.dart';
 
-/// Displays name, star rating, and the next available time slot.
+/// Card used in the "Top Rated & Available Soon" horizontal carousel.
+/// Shows tutor name, rating, location, and the next available time slot
+/// with a live countdown.
 class TutorCarouselCard extends StatelessWidget {
   final AvailableTutorModel tutor;
 
   const TutorCarouselCard({super.key, required this.tutor});
 
-  String _formatSlot() {
+  /// "Today  3:00 – 4:00 PM" or "Tomorrow  3:00 PM" etc.
+  String _slotRange() {
     final start = tutor.nextSlotStart;
     if (start == null) return '';
+
+    String fmt(DateTime dt) {
+      final h = dt.hour;
+      final m = dt.minute.toString().padLeft(2, '0');
+      final period = h < 12 ? 'AM' : 'PM';
+      final dh = h % 12 == 0 ? 12 : h % 12;
+      return '$dh:$m $period';
+    }
 
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final tomorrow = today.add(const Duration(days: 1));
     final slotDay = DateTime(start.year, start.month, start.day);
 
-    final h = start.hour;
-    final m = start.minute.toString().padLeft(2, '0');
-    final period = h < 12 ? 'AM' : 'PM';
-    final displayHour = h % 12 == 0 ? 12 : h % 12;
-    final timeStr = '$displayHour:$m $period';
+    String day;
+    if (slotDay == today) {
+      day = 'Today';
+    } else if (slotDay == tomorrow) {
+      day = 'Tomorrow';
+    } else {
+      const months = [
+        'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      ];
+      day = '${months[start.month - 1]} ${start.day}';
+    }
 
-    if (slotDay == today) return 'Today\n$timeStr';
-    if (slotDay == tomorrow) return 'Tomorrow\n$timeStr';
-    const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-    ];
-    return '${months[start.month - 1]} ${start.day}\n$timeStr';
+    final end = tutor.nextSlotEnd;
+    if (end != null) return '$day  ${fmt(start)} – ${fmt(end)}';
+    return '$day  ${fmt(start)}';
+  }
+
+  /// "in 30 min" / "in 2h 15min" / "Ongoing"
+  String _countdown() {
+    final start = tutor.nextSlotStart;
+    if (start == null) return '';
+    final diff = start.difference(DateTime.now());
+    if (diff.isNegative) return 'Ongoing';
+    if (diff.inMinutes < 1) return 'Starting now';
+    if (diff.inMinutes < 60) return 'in ${diff.inMinutes} min';
+    final h = diff.inHours;
+    final m = diff.inMinutes % 60;
+    return m == 0 ? 'in ${h}h' : 'in ${h}h ${m}min';
   }
 
   @override
   Widget build(BuildContext context) {
-    final slotText = _formatSlot();
+    final slotRange = _slotRange();
+    final countdown = _countdown();
 
     return Container(
-      width: 140,
-      padding: const EdgeInsets.all(12),
+      width: 204,
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: AppColors.inputBackground,
         borderRadius: BorderRadius.circular(12),
@@ -48,58 +76,114 @@ class TutorCarouselCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Avatar
-          Container(
-            width: 40,
-            height: 40,
-            decoration: const BoxDecoration(
-              color: AppColors.primary,
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(Icons.person, color: Colors.white, size: 22),
-          ),
-          const SizedBox(height: 8),
-          // Name
-          Text(
-            tutor.name,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: GoogleFonts.lexend(
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              color: AppColors.black,
-              height: 1.3,
-            ),
-          ),
-          const SizedBox(height: 4),
-          // Rating
+          // Avatar + name + rating row
           Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              const Icon(Icons.star_rounded, color: AppColors.primary, size: 14),
-              const SizedBox(width: 2),
-              Text(
-                tutor.rating.toStringAsFixed(1),
-                style: GoogleFonts.lexend(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
+              Container(
+                width: 36,
+                height: 36,
+                decoration: const BoxDecoration(
                   color: AppColors.primary,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.person, color: Colors.white, size: 20),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      tutor.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.lexend(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.black,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.star_rounded,
+                          size: 13,
+                          color: AppColors.primary,
+                        ),
+                        const SizedBox(width: 2),
+                        Text(
+                          tutor.rating.toStringAsFixed(1),
+                          style: GoogleFonts.lexend(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            tutor.location,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.lexend(
+                              fontSize: 11,
+                              color: AppColors.brown,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 4),
-          // Next available slot
-          if (slotText.isNotEmpty)
-            Text(
-              slotText,
-              maxLines: 2,
-              style: GoogleFonts.lexend(
-                fontSize: 12,
-                fontWeight: FontWeight.w400,
-                color: AppColors.brown,
-                height: 1.4,
+          const SizedBox(height: 10),
+          // Slot pill
+          if (slotRange.isNotEmpty)
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.access_time_rounded,
+                    size: 12,
+                    color: AppColors.primary,
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      slotRange,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.lexend(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
+          // Countdown
+          if (countdown.isNotEmpty) ...[
+            const SizedBox(height: 5),
+            Text(
+              countdown,
+              style: GoogleFonts.lexend(
+                fontSize: 11,
+                color: AppColors.brown,
+              ),
+            ),
+          ],
         ],
       ),
     );
