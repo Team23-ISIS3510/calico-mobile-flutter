@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'features/auth/presentation/screens/register_screen.dart';
+import 'features/auth/presentation/screens/login_screen.dart';
 import 'features/home/presentation/screens/home_screen.dart';
+import 'features/auth/presentation/screens/profile_screen.dart';
 
 /// Root widget. Owns theming and the route table.
 class CalicoApp extends StatelessWidget {
@@ -19,7 +21,7 @@ class CalicoApp extends StatelessWidget {
         ),
         scaffoldBackgroundColor: const Color(0xFFFCFAF7),
       ),
-      home: const RegisterScreen(),
+      home: LoginScreen(),
       onGenerateRoute: (settings) {
         switch (settings.name) {
           case '/home':
