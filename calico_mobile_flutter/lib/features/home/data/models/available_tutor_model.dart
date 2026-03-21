@@ -7,8 +7,9 @@ class AvailableTutorModel {
   final String location;
   final DateTime? nextSlotStart;
   final DateTime? nextSlotEnd;
+  final String? parentAvailabilityId;
+  final int? nextSlotIndex;
   final int availableSlotsCount;
-  // Present only on the "returning tutor" result.
   final int? bookingCount;
 
   const AvailableTutorModel({
@@ -20,6 +21,8 @@ class AvailableTutorModel {
     required this.location,
     this.nextSlotStart,
     this.nextSlotEnd,
+    this.parentAvailabilityId,
+    this.nextSlotIndex,
     required this.availableSlotsCount,
     this.bookingCount,
   });
@@ -39,8 +42,9 @@ class AvailableTutorModel {
       nextSlotEnd: slot?['endDateTime'] != null
           ? DateTime.tryParse(slot!['endDateTime'].toString())
           : null,
-      availableSlotsCount:
-          (json['availableSlotsCount'] as num?)?.toInt() ?? 0,
+      parentAvailabilityId: slot?['parentAvailabilityId']?.toString(),
+      nextSlotIndex: (slot?['slotIndex'] as num?)?.toInt(),
+      availableSlotsCount: (json['availableSlotsCount'] as num?)?.toInt() ?? 0,
       bookingCount: (json['bookingCount'] as num?)?.toInt(),
     );
   }

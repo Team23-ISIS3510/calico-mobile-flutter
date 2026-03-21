@@ -8,6 +8,7 @@ import '../controllers/login_controller.dart';
 import '../../../home/presentation/screens/home_screen.dart';
 import '../../../../core/validators/form_validators.dart';
 import '../screens/register_screen.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -320,14 +321,88 @@ class _ForgotPasswordLink extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
       child: GestureDetector(
-        onTap: () {
-          // TODO: Navigator.pushNamed(context, '/forgot-password');
-        },
+        onTap: () => _showForgotPasswordDialog(context),
         child: Text(
           'Forgot Password?',
           textAlign: TextAlign.center,
           style: AppTextStyles.linkText,
         ),
+      ),
+    );
+  }
+
+  void _showForgotPasswordDialog(BuildContext context) {
+    final emailController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text('Reset Password', style: AppTextStyles.itemTitle),
+        content: TextField(
+          controller: emailController,
+          keyboardType: TextInputType.emailAddress,
+          style: AppTextStyles.fieldPlaceholder,
+          decoration: InputDecoration(
+            hintText: 'Enter your email',
+            hintStyle: AppTextStyles.fieldPlaceholder,
+            filled: true,
+            fillColor: AppColors.inputBackground,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide.none,
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancel', style: AppTextStyles.linkText),
+          ),
+          TextButton(
+            onPressed: () async {
+              final email = emailController.text.trim();
+              if (email.isEmpty) return;
+              try {
+                await FirebaseAuth.instance.sendPasswordResetEmail(
+                  email: email,
+                );
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'Password reset email sent, check spam folder (just in case)!',
+                      style: GoogleFonts.lexend(fontSize: 14),
+                    ),
+                    backgroundColor: const Color(0xFF4CAF50),
+                    behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    margin: const EdgeInsets.all(16),
+                  ),
+                );
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'Error: ${e.toString()}',
+                      style: GoogleFonts.lexend(fontSize: 14),
+                    ),
+                    backgroundColor: const Color(0xFFB00020),
+                    behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    margin: const EdgeInsets.all(16),
+                  ),
+                );
+              }
+            },
+            child: Text(
+              'Send',
+              style: AppTextStyles.linkText.copyWith(color: AppColors.primary),
+            ),
+          ),
+        ],
       ),
     );
   }
