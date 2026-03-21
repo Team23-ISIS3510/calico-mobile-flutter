@@ -16,7 +16,8 @@ import '../../data/repositories/session_repository_impl.dart';
 import '../controllers/home_controller.dart';
 import 'course_detail_screen.dart';
 import 'session_detail_screen.dart';
-import 'package:calico_mobile_flutter/features/auth/presentation/screens/profile_screen.dart';
+import 'package:calico_mobile_flutter/features/profile/presentation/screens/profile_screen.dart';
+import '../../../../core/utils/context_aware_helper.dart';
 
 class HomeScreen extends StatefulWidget {
   /// Firebase UID of the logged-in student. Pass empty string for guest mode.
@@ -47,6 +48,46 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _onUpdate() => setState(() {});
 
+  String _getContextTitle() {
+    final hour = DateTime.now().hour;
+
+    if (hour < 12) return 'Good morning';
+    if (hour < 18) return 'Good afternoon';
+    return 'Good evening';
+  }
+
+  String _getContextMessage() {
+    final hour = DateTime.now().hour;
+
+    if (widget.studentId.isEmpty) {
+      return 'Inicia sesión para ver recomendaciones personalizadas.';
+    }
+
+    if (hour < 12) {
+      return _controller.sessions.isNotEmpty
+          ? 'Empieza tu día revisando tus próximas sesiones.'
+          : 'Es un buen momento para explorar cursos para hoy.';
+    }
+
+    if (hour < 18) {
+      return _controller.sessions.isNotEmpty
+          ? 'Aún tienes tiempo para prepararte para tu próxima sesión.'
+          : 'Explora cursos y encuentra apoyo para tus clases.';
+    }
+
+    return _controller.sessions.isNotEmpty
+        ? 'Revisa tus sesiones y prepárate para mañana.'
+        : 'Un buen momento para repasar cursos antes de terminar el día.';
+  }
+
+  IconData _getContextIcon() {
+    final hour = DateTime.now().hour;
+
+    if (hour < 12) return Icons.wb_sunny_outlined;
+    if (hour < 18) return Icons.light_mode_outlined;
+    return Icons.nightlight_round;
+  }
+
   @override
   void dispose() {
     _controller.removeListener(_onUpdate);
@@ -71,6 +112,13 @@ class _HomeScreenState extends State<HomeScreen> {
                   controller: _searchController,
                   onChanged: _controller.search,
                 ),
+                _ContextAwareBanner(
+                  title: ContextAwareHelper.getTitle(),
+                  message: ContextAwareHelper.getMessage(
+                    hasSessions: _controller.sessions.isNotEmpty,
+                  ),
+                  icon: ContextAwareHelper.getIcon(),
+                ),
               ],
             ),
           ),
@@ -85,7 +133,9 @@ class _HomeScreenState extends State<HomeScreen> {
           if (i == 1) {
             Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => const ProfileScreen()),
+              MaterialPageRoute(
+                builder: (_) => ProfileScreen(userId: widget.studentId),
+              ),
             );
           } else {
             setState(() => _selectedTab = i);
@@ -145,7 +195,10 @@ class _HomeScreenState extends State<HomeScreen> {
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => CourseDetailScreen(course: c),
+                  builder: (_) => CourseDetailScreen(
+                    course: c,
+                    studentId: widget.studentId,
+                  ),
                 ),
               ),
             ),
@@ -154,9 +207,11 @@ class _HomeScreenState extends State<HomeScreen> {
         // ── Sessions ─────────────────────────────────────────────────────
         const SectionHeader('Upcoming Sessions'),
         if (_controller.sessions.isEmpty)
-          EmptyStateView(widget.studentId.isEmpty
-              ? 'Sign in to see your sessions'
-              : 'No upcoming sessions')
+          EmptyStateView(
+            widget.studentId.isEmpty
+                ? 'Sign in to see your sessions'
+                : 'No upcoming sessions',
+          )
         else
           ..._controller.sessions.map(
             (s) => SessionCard(
@@ -186,9 +241,7 @@ class _HomeHeader extends StatelessWidget {
       color: AppColors.background,
       child: const Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          AppLogo(),
-        ],
+        children: [AppLogo()],
       ),
     );
   }
@@ -247,6 +300,50 @@ class _SearchBar extends StatelessWidget {
                     isDense: true,
                   ),
                 ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ContextAwareBanner extends StatelessWidget {
+  final String title;
+  final String message;
+  final IconData icon;
+
+  const _ContextAwareBanner({
+    required this.title,
+    required this.message,
+    required this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.inputBackground,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, color: AppColors.primary, size: 24),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: AppTextStyles.itemTitle),
+                  const SizedBox(height: 4),
+                  Text(message, style: AppTextStyles.itemSubtitle),
+                ],
               ),
             ),
           ],

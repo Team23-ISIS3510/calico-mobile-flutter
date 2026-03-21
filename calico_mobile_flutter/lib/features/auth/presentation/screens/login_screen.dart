@@ -8,6 +8,7 @@ import '../controllers/login_controller.dart';
 import '../../../home/presentation/screens/home_screen.dart';
 import '../../../../core/validators/form_validators.dart';
 import '../screens/register_screen.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -70,9 +71,16 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _onLoginPressed() {
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => HomeScreen(studentId: 'test-user')),
-    );
+    if (_formKey.currentState?.validate() ?? false) {
+      _controller.login(
+        email: _emailController.text.trim(),
+        password: _passwordController.text,
+      );
+    }
+  }
+
+  void _onGooglePressed() {
+    _controller.loginWithGoogle();
   }
 
   @override
@@ -83,29 +91,39 @@ class _LoginScreenState extends State<LoginScreen> {
         child: Form(
           key: _formKey,
           autovalidateMode: AutovalidateMode.onUserInteraction,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _LogoSection(),
-              _InputField(
-                label: 'Username or Email',
-                controller: _emailController,
-                keyboardType: TextInputType.emailAddress,
-                validator: FormValidators.email,
-              ),
-              _InputField(
-                label: 'Password',
-                controller: _passwordController,
-                obscureText: true,
-                validator: FormValidators.password,
-              ),
-              _LoginButton(
-                isLoading: _controller.isLoading,
-                onPressed: _controller.isLoading ? null : _onLoginPressed,
-              ),
-              _RegisterLink(),
-              _ForgotPasswordLink(),
-            ],
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _LogoSection(),
+                _InputField(
+                  label: 'Username or Email',
+                  controller: _emailController,
+                  keyboardType: TextInputType.emailAddress,
+                  validator: FormValidators.email,
+                ),
+                _InputField(
+                  label: 'Password',
+                  controller: _passwordController,
+                  obscureText: true,
+                  validator: FormValidators.password,
+                ),
+                _LoginButton(
+                  isLoading: _controller.isEmailLoading,
+                  onPressed: _controller.isEmailLoading
+                      ? null
+                      : _onLoginPressed,
+                ),
+                _GoogleButton(
+                  isLoading: _controller.isGoogleLoading,
+                  onPressed: _controller.isGoogleLoading
+                      ? null
+                      : _onGooglePressed,
+                ),
+                _RegisterLink(),
+                _ForgotPasswordLink(),
+              ],
+            ),
           ),
         ),
       ),
@@ -222,6 +240,54 @@ class _LoginButton extends StatelessWidget {
   }
 }
 
+class _GoogleButton extends StatelessWidget {
+  final bool isLoading;
+  final VoidCallback? onPressed;
+
+  const _GoogleButton({required this.isLoading, required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: SizedBox(
+        height: 48,
+        child: OutlinedButton.icon(
+          onPressed: onPressed,
+          icon: Container(
+            width: 20,
+            height: 20,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(2),
+            ),
+            child: const Text(
+              'G',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Color(0xFF4285F4),
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+              ),
+            ),
+          ),
+          label: Text(
+            'Continue with Google',
+            style: AppTextStyles.buttonLabel.copyWith(color: Colors.black87),
+          ),
+          style: OutlinedButton.styleFrom(
+            backgroundColor: Colors.white,
+            side: const BorderSide(color: Colors.black26),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _RegisterLink extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -255,14 +321,88 @@ class _ForgotPasswordLink extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
       child: GestureDetector(
-        onTap: () {
-          // TODO: Navigator.pushNamed(context, '/forgot-password');
-        },
+        onTap: () => _showForgotPasswordDialog(context),
         child: Text(
           'Forgot Password?',
           textAlign: TextAlign.center,
           style: AppTextStyles.linkText,
         ),
+      ),
+    );
+  }
+
+  void _showForgotPasswordDialog(BuildContext context) {
+    final emailController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text('Reset Password', style: AppTextStyles.itemTitle),
+        content: TextField(
+          controller: emailController,
+          keyboardType: TextInputType.emailAddress,
+          style: AppTextStyles.fieldPlaceholder,
+          decoration: InputDecoration(
+            hintText: 'Enter your email',
+            hintStyle: AppTextStyles.fieldPlaceholder,
+            filled: true,
+            fillColor: AppColors.inputBackground,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide.none,
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancel', style: AppTextStyles.linkText),
+          ),
+          TextButton(
+            onPressed: () async {
+              final email = emailController.text.trim();
+              if (email.isEmpty) return;
+              try {
+                await FirebaseAuth.instance.sendPasswordResetEmail(
+                  email: email,
+                );
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'Password reset email sent, check spam folder (just in case)!',
+                      style: GoogleFonts.lexend(fontSize: 14),
+                    ),
+                    backgroundColor: const Color(0xFF4CAF50),
+                    behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    margin: const EdgeInsets.all(16),
+                  ),
+                );
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'Error: ${e.toString()}',
+                      style: GoogleFonts.lexend(fontSize: 14),
+                    ),
+                    backgroundColor: const Color(0xFFB00020),
+                    behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    margin: const EdgeInsets.all(16),
+                  ),
+                );
+              }
+            },
+            child: Text(
+              'Send',
+              style: AppTextStyles.linkText.copyWith(color: AppColors.primary),
+            ),
+          ),
+        ],
       ),
     );
   }

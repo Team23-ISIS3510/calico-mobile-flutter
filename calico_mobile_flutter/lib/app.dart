@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'features/auth/presentation/screens/register_screen.dart';
 import 'features/auth/presentation/screens/login_screen.dart';
 import 'features/home/presentation/screens/home_screen.dart';
-import 'features/auth/presentation/screens/profile_screen.dart';
+import 'features/profile/presentation/screens/profile_screen.dart';
 
 /// Root widget. Owns theming and the route table.
 class CalicoApp extends StatelessWidget {
