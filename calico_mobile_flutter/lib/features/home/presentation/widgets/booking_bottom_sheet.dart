@@ -27,8 +27,8 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
   String? _error;
 
   String _formatSlot() {
-    final start = widget.tutor.nextSlotStart;
-    final end = widget.tutor.nextSlotEnd;
+    final start = widget.tutor.nextSlotStart?.toLocal();
+    final end = widget.tutor.nextSlotEnd?.toLocal();
     if (start == null) return 'No slot available';
 
     String fmt(DateTime dt) {
@@ -74,6 +74,9 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
           'scheduledEnd': widget.tutor.nextSlotEnd!.toIso8601String(),
           'location': widget.tutor.location,
           'requiresApproval': false,
+
+          'tutorName': widget.tutor.name,
+
           if (widget.tutor.parentAvailabilityId != null)
             'parentAvailabilityId': widget.tutor.parentAvailabilityId,
           if (widget.tutor.nextSlotIndex != null)

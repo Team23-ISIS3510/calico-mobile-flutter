@@ -14,7 +14,7 @@ class TutorCarouselCard extends StatelessWidget {
 
   /// "Today  3:00 – 4:00 PM" or "Tomorrow  3:00 PM" etc.
   String _slotRange() {
-    final start = tutor.nextSlotStart;
+    final start = tutor.nextSlotStart?.toLocal();
     if (start == null) return '';
 
     String fmt(DateTime dt) {
@@ -53,7 +53,7 @@ class TutorCarouselCard extends StatelessWidget {
       day = '${months[start.month - 1]} ${start.day}';
     }
 
-    final end = tutor.nextSlotEnd;
+    final end = tutor.nextSlotEnd?.toLocal();
     if (end != null) return '$day  ${fmt(start)} – ${fmt(end)}';
     return '$day  ${fmt(start)}';
   }

@@ -7,6 +7,7 @@ class SessionModel {
   final String? courseId;
   final String? courseName;
   final String? tutorName;
+  final String? tutorEmail;
   final String status;
 
   const SessionModel({
@@ -18,6 +19,7 @@ class SessionModel {
     this.courseId,
     this.courseName,
     this.tutorName,
+    this.tutorEmail,
     required this.status,
   });
 
@@ -25,10 +27,7 @@ class SessionModel {
     return SessionModel(
       id: json['id']?.toString() ?? '',
       tutorId: json['tutorId']?.toString() ?? '',
-      studentId:
-          json['studentId']?.toString() ??
-          json['studentEmail']?.toString() ??
-          '',
+      studentId: json['studentId']?.toString() ?? '',
       startDateTime: _parseDate(
         json['startDateTime'] ?? json['start'] ?? json['scheduledStart'],
       ),
@@ -37,13 +36,12 @@ class SessionModel {
       ),
       courseId: json['courseId']?.toString() ?? json['course']?.toString(),
       courseName: json['courseName']?.toString(),
-      tutorName:
-          json['tutorName']?.toString() ?? json['tutorEmail']?.toString(),
+      tutorName: json['tutorName']?.toString(),
+      tutorEmail: json['tutorEmail']?.toString(),
       status: json['status']?.toString() ?? 'pending',
     );
   }
 
-  /// "07/18/2024 · 11:00 AM" — matches the design spec format.
   String get formattedDate {
     if (startDateTime == null) return 'Date TBD';
     final d = startDateTime!;
@@ -60,21 +58,34 @@ class SessionModel {
     return '$mm/$dd/${d.year} · $hour:$min $ampm';
   }
 
-  String get displayTutor => tutorName != null && tutorName!.isNotEmpty
-      ? 'Tutor: $tutorName'
-      : 'Tutor: $tutorId';
+  String get displayTutor {
+    final hasName = tutorName != null && tutorName!.isNotEmpty;
+    final hasEmail = tutorEmail != null && tutorEmail!.isNotEmpty;
+
+    if (hasName && hasEmail) {
+      return 'Tutor: $tutorName, $tutorEmail';
+    }
+    if (hasName) {
+      return 'Tutor: $tutorName';
+    }
+    if (hasEmail) {
+      return 'Tutor: $tutorEmail';
+    }
+    return 'Tutor: $tutorId';
+  }
 
   String get displayCourse => courseName != null && courseName!.isNotEmpty
       ? courseName!
-      : courseId ?? '';
+      : (courseId ?? '');
 
-  /// Parses both ISO 8601 strings and Firestore Timestamp JSON objects.
   static DateTime? _parseDate(dynamic value) {
     if (value == null) return null;
+
     if (value is String) {
       final parsed = DateTime.tryParse(value);
       return parsed?.toLocal();
     }
+
     if (value is Map) {
       final seconds = value['_seconds'] ?? value['seconds'];
       if (seconds != null) {
@@ -83,6 +94,7 @@ class SessionModel {
         ).toLocal();
       }
     }
+
     return null;
   }
 }

@@ -244,15 +244,15 @@ class _GoToTutorSection extends StatelessWidget {
   });
 
   String _slotRange() {
-    final start = tutor.nextSlotStart;
+    final start = tutor.nextSlotStart?.toLocal();
     if (start == null) return '';
 
     String fmt(DateTime dt) {
       final h = dt.hour;
       final m = dt.minute.toString().padLeft(2, '0');
-      final p = h < 12 ? 'AM' : 'PM';
+      final period = h < 12 ? 'AM' : 'PM';
       final dh = h % 12 == 0 ? 12 : h % 12;
-      return '$dh:$m $p';
+      return '$dh:$m $period';
     }
 
     final now = DateTime.now();
@@ -283,7 +283,7 @@ class _GoToTutorSection extends StatelessWidget {
       day = '${months[start.month - 1]} ${start.day}';
     }
 
-    final end = tutor.nextSlotEnd;
+    final end = tutor.nextSlotEnd?.toLocal();
     if (end != null) return '$day  ${fmt(start)} – ${fmt(end)}';
     return '$day  ${fmt(start)}';
   }
