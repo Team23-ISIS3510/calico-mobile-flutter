@@ -184,6 +184,27 @@ class TutorCarouselCard extends StatelessWidget {
               ),
             ),
           ],
+          // Booking history badge — only shown on the "returning tutor" card
+          if (tutor.bookingCount != null && tutor.bookingCount! > 0) ...[
+            const SizedBox(height: 5),
+            Row(
+              children: [
+                const Icon(
+                  Icons.history_rounded,
+                  size: 12,
+                  color: AppColors.brown,
+                ),
+                const SizedBox(width: 3),
+                Text(
+                  'Booked ${tutor.bookingCount}×',
+                  style: GoogleFonts.lexend(
+                    fontSize: 11,
+                    color: AppColors.brown,
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
