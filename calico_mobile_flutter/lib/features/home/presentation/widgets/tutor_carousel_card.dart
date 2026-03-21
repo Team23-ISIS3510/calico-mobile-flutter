@@ -36,8 +36,18 @@ class TutorCarouselCard extends StatelessWidget {
       day = 'Tomorrow';
     } else {
       const months = [
-        'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec',
       ];
       day = '${months[start.month - 1]} ${start.day}';
     }
@@ -144,8 +154,7 @@ class TutorCarouselCard extends StatelessWidget {
           // Slot pill
           if (slotRange.isNotEmpty)
             Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
               decoration: BoxDecoration(
                 color: AppColors.primary.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(6),
@@ -178,10 +187,7 @@ class TutorCarouselCard extends StatelessWidget {
             const SizedBox(height: 5),
             Text(
               countdown,
-              style: GoogleFonts.lexend(
-                fontSize: 11,
-                color: AppColors.brown,
-              ),
+              style: GoogleFonts.lexend(fontSize: 11, color: AppColors.brown),
             ),
           ],
           // Booking history badge — only shown on the "returning tutor" card
