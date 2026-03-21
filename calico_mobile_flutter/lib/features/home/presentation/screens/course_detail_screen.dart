@@ -7,7 +7,6 @@ import '../../data/models/available_tutor_model.dart';
 import '../../data/models/course_model.dart';
 import '../../data/repositories/analytics_repository_impl.dart';
 import '../widgets/tutor_carousel_card.dart';
-
 class CourseDetailScreen extends StatefulWidget {
   final CourseModel course;
   final String studentId;
@@ -101,16 +100,16 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
               _InfoRow('Faculty', widget.course.faculty),
             ]),
 
+            // Your Go-To Tutor — shown first, only when loaded with a result
+            if (_goToTutorLoaded && _goToTutor != null) ...[
+              const SizedBox(height: 24),
+              _GoToTutorSection(tutor: _goToTutor!),
+            ],
+
             // Top Rated & Available Soon — only visible when loading or has data
             if (_tutors == null || _tutors!.isNotEmpty) ...[
               const SizedBox(height: 28),
               _TutorSection(tutors: _tutors),
-            ],
-
-            // Your Go-To Tutor — only shown once loaded and a result exists
-            if (_goToTutorLoaded && _goToTutor != null) ...[
-              const SizedBox(height: 28),
-              _GoToTutorSection(tutor: _goToTutor!),
             ],
 
             const SizedBox(height: 16),
@@ -204,20 +203,268 @@ class _GoToTutorSection extends StatelessWidget {
 
   const _GoToTutorSection({required this.tutor});
 
+  String _slotRange() {
+    final start = tutor.nextSlotStart;
+    if (start == null) return '';
+    String fmt(DateTime dt) {
+      final h = dt.hour;
+      final m = dt.minute.toString().padLeft(2, '0');
+      final p = h < 12 ? 'AM' : 'PM';
+      final dh = h % 12 == 0 ? 12 : h % 12;
+      return '$dh:$m $p';
+    }
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final tomorrow = today.add(const Duration(days: 1));
+    final slotDay = DateTime(start.year, start.month, start.day);
+    String day;
+    if (slotDay == today) {
+      day = 'Today';
+    } else if (slotDay == tomorrow) {
+      day = 'Tomorrow';
+    } else {
+      const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      day = '${months[start.month - 1]} ${start.day}';
+    }
+    final end = tutor.nextSlotEnd;
+    return end != null ? '$day  ${fmt(start)} – ${fmt(end)}' : '$day  ${fmt(start)}';
+  }
+
+  String _countdown() {
+    final start = tutor.nextSlotStart;
+    if (start == null) return '';
+    final diff = start.difference(DateTime.now());
+    if (diff.isNegative) return 'Ongoing';
+    if (diff.inMinutes < 1) return 'Starting now';
+    if (diff.inMinutes < 60) return 'in ${diff.inMinutes} min';
+    final h = diff.inHours;
+    final m = diff.inMinutes % 60;
+    return m == 0 ? 'in ${h}h' : 'in ${h}h ${m}min';
+  }
+
   @override
   Widget build(BuildContext context) {
-    final times = tutor.bookingCount == 1 ? 'time' : 'times';
+    final times = tutor.bookingCount == 1 ? 'session' : 'sessions';
+    final slotRange = _slotRange();
+    final countdown = _countdown();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Your Go-To Tutor', style: AppTextStyles.sectionTitle),
+        // Header — icon + smaller title + "For You" badge
+        Row(
+          children: [
+            const Icon(Icons.auto_awesome_rounded,
+                size: 16, color: AppColors.brown),
+            const SizedBox(width: 6),
+            Text(
+              'Your Go-To Tutor',
+              style: GoogleFonts.lexend(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: AppColors.black,
+              ),
+            ),
+            const Spacer(),
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                'For You',
+                style: GoogleFonts.lexend(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.primary,
+                ),
+              ),
+            ),
+          ],
+        ),
         const SizedBox(height: 4),
         Text(
-          'You have booked this tutor ${tutor.bookingCount} $times for this course',
+          'Based on your ${tutor.bookingCount} past $times with this tutor',
           style: AppTextStyles.itemSubtitle,
         ),
-        const SizedBox(height: 14),
-        TutorCarouselCard(tutor: tutor),
+        const SizedBox(height: 12),
+
+        // Full-width card with left orange accent bar
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Left accent bar
+              Container(
+                width: 4,
+                decoration: const BoxDecoration(
+                  color: AppColors.primary,
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(12),
+                    bottomLeft: Radius.circular(12),
+                  ),
+                ),
+              ),
+              // Card body
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: const BorderRadius.only(
+                      topRight: Radius.circular(12),
+                      bottomRight: Radius.circular(12),
+                    ),
+                    border: const Border(
+                      top: BorderSide(color: Color(0xFFEDE5D0)),
+                      right: BorderSide(color: Color(0xFFEDE5D0)),
+                      bottom: BorderSide(color: Color(0xFFEDE5D0)),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Avatar + name + rating + booked badge
+                      Row(
+                        children: [
+                          Container(
+                            width: 44,
+                            height: 44,
+                            decoration: const BoxDecoration(
+                              color: AppColors.primary,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.person,
+                                color: Colors.white, size: 24),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  tutor.name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.lexend(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.black,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Row(
+                                  children: [
+                                    const Icon(Icons.star_rounded,
+                                        size: 13, color: AppColors.primary),
+                                    const SizedBox(width: 2),
+                                    Text(
+                                      tutor.rating.toStringAsFixed(1),
+                                      style: GoogleFonts.lexend(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppColors.primary,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Expanded(
+                                      child: Text(
+                                        tutor.location,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: GoogleFonts.lexend(
+                                          fontSize: 11,
+                                          color: AppColors.brown,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                          // Booked count chip
+                          if (tutor.bookingCount != null &&
+                              tutor.bookingCount! > 0) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: AppColors.inputBackground,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.history_rounded,
+                                      size: 11, color: AppColors.brown),
+                                  const SizedBox(width: 3),
+                                  Text(
+                                    '${tutor.bookingCount}×',
+                                    style: GoogleFonts.lexend(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.brown,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      // Slot pill
+                      if (slotRange.isNotEmpty) ...[
+                        const SizedBox(height: 10),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.access_time_rounded,
+                                  size: 13, color: AppColors.primary),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  slotRange,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.lexend(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                    color: AppColors.primary,
+                                  ),
+                                ),
+                              ),
+                              if (countdown.isNotEmpty) ...[
+                                const SizedBox(width: 8),
+                                Text(
+                                  countdown,
+                                  style: GoogleFonts.lexend(
+                                    fontSize: 11,
+                                    color: AppColors.brown,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }
