@@ -8,19 +8,6 @@ class AnalyticsRepositoryImpl implements AnalyticsRepository {
   const AnalyticsRepositoryImpl(this._apiClient);
 
   @override
-  Future<List<AvailableTutorModel>> getAvailableTutors(String courseId) async {
-    final data = await _apiClient.get(
-      '/analytics/available-tutors',
-      query: {'course': courseId},
-    );
-    final raw = data['tutors'] as List<dynamic>? ?? [];
-    return raw
-        .whereType<Map<String, dynamic>>()
-        .map(AvailableTutorModel.fromJson)
-        .toList();
-  }
-
-  @override
   Future<AvailableTutorModel?> getReturningTutor(
     String studentId,
     String courseId,
@@ -32,5 +19,18 @@ class AnalyticsRepositoryImpl implements AnalyticsRepository {
     final raw = data['tutor'];
     if (raw == null) return null;
     return AvailableTutorModel.fromJson(raw as Map<String, dynamic>);
+  }
+
+  @override
+  Future<List<AvailableTutorModel>> getAvailableTutors(String courseId) async {
+    final data = await _apiClient.get(
+      '/analytics/bookable-tutors',
+      query: {'course': courseId},
+    );
+    final raw = data['tutors'] as List<dynamic>? ?? [];
+    return raw
+        .whereType<Map<String, dynamic>>()
+        .map(AvailableTutorModel.fromJson)
+        .toList();
   }
 }
