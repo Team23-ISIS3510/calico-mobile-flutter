@@ -7,6 +7,8 @@ import '../../data/models/available_tutor_model.dart';
 import '../../data/models/course_model.dart';
 import '../../data/repositories/analytics_repository_impl.dart';
 import '../widgets/tutor_carousel_card.dart';
+import '../widgets/booking_bottom_sheet.dart';
+
 class CourseDetailScreen extends StatefulWidget {
   final CourseModel course;
   final String studentId;
@@ -22,10 +24,7 @@ class CourseDetailScreen extends StatefulWidget {
 }
 
 class _CourseDetailScreenState extends State<CourseDetailScreen> {
-  // null = still loading, [] = loaded but none found
   List<AvailableTutorModel>? _tutors;
-
-  // Loaded after _tutors; only shown when non-null
   bool _goToTutorLoaded = false;
   AvailableTutorModel? _goToTutor;
 
@@ -48,8 +47,16 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
 
   Future<void> _loadGoToTutor(AnalyticsRepositoryImpl repo) async {
     try {
-      final tutor = await repo.getReturningTutor(widget.studentId, widget.course.id);
-      if (mounted) setState(() { _goToTutor = tutor; _goToTutorLoaded = true; });
+      final tutor = await repo.getReturningTutor(
+        widget.studentId,
+        widget.course.id,
+      );
+      if (mounted) {
+        setState(() {
+          _goToTutor = tutor;
+          _goToTutorLoaded = true;
+        });
+      }
     } catch (_) {
       if (mounted) setState(() => _goToTutorLoaded = true);
     }
@@ -74,7 +81,6 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Icon banner
             Center(
               child: Container(
                 width: 80,
@@ -83,33 +89,43 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
                   color: AppColors.inputBackground,
                   borderRadius: BorderRadius.circular(16),
                 ),
-                child: const Icon(Icons.menu_book_outlined,
-                    size: 40, color: AppColors.brown),
+                child: const Icon(
+                  Icons.menu_book_outlined,
+                  size: 40,
+                  color: AppColors.brown,
+                ),
               ),
             ),
             const SizedBox(height: 24),
 
-            // Course info card
-            _InfoCard(children: [
-              _InfoRow('Name', widget.course.name),
-              _Divider(),
-              _InfoRow('Code', widget.course.code),
-              _Divider(),
-              _InfoRow('Credits', widget.course.credits.toString()),
-              _Divider(),
-              _InfoRow('Faculty', widget.course.faculty),
-            ]),
+            _InfoCard(
+              children: [
+                _InfoRow('Name', widget.course.name),
+                _Divider(),
+                _InfoRow('Code', widget.course.code),
+                _Divider(),
+                _InfoRow('Credits', widget.course.credits.toString()),
+                _Divider(),
+                _InfoRow('Faculty', widget.course.faculty),
+              ],
+            ),
 
-            // Your Go-To Tutor — shown first, only when loaded with a result
             if (_goToTutorLoaded && _goToTutor != null) ...[
               const SizedBox(height: 24),
-              _GoToTutorSection(tutor: _goToTutor!),
+              _GoToTutorSection(
+                tutor: _goToTutor!,
+                studentId: widget.studentId,
+                courseId: widget.course.id,
+              ),
             ],
 
-            // Top Rated & Available Soon — only visible when loading or has data
             if (_tutors == null || _tutors!.isNotEmpty) ...[
               const SizedBox(height: 28),
-              _TutorSection(tutors: _tutors),
+              _TutorSection(
+                tutors: _tutors,
+                studentId: widget.studentId,
+                courseId: widget.course.id,
+              ),
             ],
 
             const SizedBox(height: 16),
@@ -120,28 +136,32 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
   }
 }
 
-// ─── Tutor section ───────────────────────────────────────────────────────────
-
 class _TutorSection extends StatelessWidget {
   final List<AvailableTutorModel>? tutors;
+  final String studentId;
+  final String courseId;
 
-  const _TutorSection({required this.tutors});
+  const _TutorSection({
+    required this.tutors,
+    required this.studentId,
+    required this.courseId,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Section title + count badge
         Row(
           children: [
-            Text('Top Rated & Available Soon',
-                style: AppTextStyles.sectionTitle),
+            Text(
+              'Top Rated & Available Soon',
+              style: AppTextStyles.sectionTitle,
+            ),
             if (tutors != null && tutors!.isNotEmpty) ...[
               const SizedBox(width: 8),
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
                   color: AppColors.primary,
                   borderRadius: BorderRadius.circular(20),
@@ -164,8 +184,6 @@ class _TutorSection extends StatelessWidget {
           style: AppTextStyles.itemSubtitle,
         ),
         const SizedBox(height: 14),
-
-        // Loading spinner or horizontal carousel
         if (tutors == null)
           const SizedBox(
             height: 100,
@@ -188,7 +206,25 @@ class _TutorSection extends StatelessWidget {
               clipBehavior: Clip.none,
               itemCount: tutors!.length,
               separatorBuilder: (_, __) => const SizedBox(width: 12),
-              itemBuilder: (_, i) => TutorCarouselCard(tutor: tutors![i]),
+              itemBuilder: (context, i) => TutorCarouselCard(
+                tutor: tutors![i],
+                onTap: () async {
+                  final booked = await showModalBottomSheet<bool>(
+                    context: context,
+                    isScrollControlled: true,
+                    backgroundColor: Colors.transparent,
+                    builder: (_) => BookingBottomSheet(
+                      tutor: tutors![i],
+                      studentId: studentId,
+                      courseId: courseId,
+                    ),
+                  );
+
+                  if (booked == true && context.mounted) {
+                    Navigator.pop(context, true);
+                  }
+                },
+              ),
             ),
           ),
       ],
@@ -196,16 +232,21 @@ class _TutorSection extends StatelessWidget {
   }
 }
 
-// ─── Go-To Tutor section ─────────────────────────────────────────────────────
-
 class _GoToTutorSection extends StatelessWidget {
   final AvailableTutorModel tutor;
+  final String studentId;
+  final String courseId;
 
-  const _GoToTutorSection({required this.tutor});
+  const _GoToTutorSection({
+    required this.tutor,
+    required this.studentId,
+    required this.courseId,
+  });
 
   String _slotRange() {
     final start = tutor.nextSlotStart;
     if (start == null) return '';
+
     String fmt(DateTime dt) {
       final h = dt.hour;
       final m = dt.minute.toString().padLeft(2, '0');
@@ -213,21 +254,38 @@ class _GoToTutorSection extends StatelessWidget {
       final dh = h % 12 == 0 ? 12 : h % 12;
       return '$dh:$m $p';
     }
+
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final tomorrow = today.add(const Duration(days: 1));
     final slotDay = DateTime(start.year, start.month, start.day);
+
     String day;
     if (slotDay == today) {
       day = 'Today';
     } else if (slotDay == tomorrow) {
       day = 'Tomorrow';
     } else {
-      const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      const months = [
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec',
+      ];
       day = '${months[start.month - 1]} ${start.day}';
     }
+
     final end = tutor.nextSlotEnd;
-    return end != null ? '$day  ${fmt(start)} – ${fmt(end)}' : '$day  ${fmt(start)}';
+    if (end != null) return '$day  ${fmt(start)} – ${fmt(end)}';
+    return '$day  ${fmt(start)}';
   }
 
   String _countdown() {
@@ -244,225 +302,163 @@ class _GoToTutorSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final times = tutor.bookingCount == 1 ? 'session' : 'sessions';
     final slotRange = _slotRange();
     final countdown = _countdown();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Header — icon + smaller title + "For You" badge
-        Row(
-          children: [
-            const Icon(Icons.auto_awesome_rounded,
-                size: 16, color: AppColors.brown),
-            const SizedBox(width: 6),
-            Text(
-              'Your Go-To Tutor',
-              style: GoogleFonts.lexend(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: AppColors.black,
-              ),
-            ),
-            const Spacer(),
-            Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-              decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(
-                'For You',
-                style: GoogleFonts.lexend(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.primary,
-                ),
-              ),
-            ),
-          ],
-        ),
+        Text('Your Go-To Tutor', style: AppTextStyles.sectionTitle),
         const SizedBox(height: 4),
         Text(
-          'Based on your ${tutor.bookingCount} past $times with this tutor',
+          'Your most-booked tutor for this course',
           style: AppTextStyles.itemSubtitle,
         ),
-        const SizedBox(height: 12),
-
-        // Full-width card with left orange accent bar
-        IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Left accent bar
-              Container(
-                width: 4,
-                decoration: const BoxDecoration(
-                  color: AppColors.primary,
-                  borderRadius: BorderRadius.only(
-                    topLeft: Radius.circular(12),
-                    bottomLeft: Radius.circular(12),
+        const SizedBox(height: 14),
+        GestureDetector(
+          onTap: () async {
+            final booked = await showModalBottomSheet<bool>(
+              context: context,
+              isScrollControlled: true,
+              backgroundColor: Colors.transparent,
+              builder: (_) => BookingBottomSheet(
+                tutor: tutor,
+                studentId: studentId,
+                courseId: courseId,
+              ),
+            );
+            if (booked == true && context.mounted) {
+              Navigator.pop(context, true);
+            }
+          },
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFEDE5D0)),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 8,
+                  height: 120,
+                  decoration: BoxDecoration(
+                    color: AppColors.primary,
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(12),
+                      bottomLeft: Radius.circular(12),
+                    ),
                   ),
                 ),
-              ),
-              // Card body
-              Expanded(
-                child: Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: const BorderRadius.only(
-                      topRight: Radius.circular(12),
-                      bottomRight: Radius.circular(12),
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: const BorderRadius.only(
+                        topRight: Radius.circular(12),
+                        bottomRight: Radius.circular(12),
+                      ),
+                      border: const Border(
+                        top: BorderSide(color: Color(0xFFEDE5D0)),
+                        right: BorderSide(color: Color(0xFFEDE5D0)),
+                        bottom: BorderSide(color: Color(0xFFEDE5D0)),
+                      ),
                     ),
-                    border: const Border(
-                      top: BorderSide(color: Color(0xFFEDE5D0)),
-                      right: BorderSide(color: Color(0xFFEDE5D0)),
-                      bottom: BorderSide(color: Color(0xFFEDE5D0)),
-                    ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Avatar + name + rating + booked badge
-                      Row(
-                        children: [
-                          Container(
-                            width: 44,
-                            height: 44,
-                            decoration: const BoxDecoration(
-                              color: AppColors.primary,
-                              shape: BoxShape.circle,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              width: 44,
+                              height: 44,
+                              decoration: const BoxDecoration(
+                                color: AppColors.primary,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.person,
+                                color: Colors.white,
+                                size: 24,
+                              ),
                             ),
-                            child: const Icon(Icons.person,
-                                color: Colors.white, size: 24),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  tutor.name,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: GoogleFonts.lexend(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                    color: AppColors.black,
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    tutor.name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: GoogleFonts.lexend(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.black,
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(height: 2),
-                                Row(
-                                  children: [
-                                    const Icon(Icons.star_rounded,
-                                        size: 13, color: AppColors.primary),
-                                    const SizedBox(width: 2),
-                                    Text(
-                                      tutor.rating.toStringAsFixed(1),
-                                      style: GoogleFonts.lexend(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
+                                  const SizedBox(height: 2),
+                                  Row(
+                                    children: [
+                                      const Icon(
+                                        Icons.star_rounded,
+                                        size: 13,
                                         color: AppColors.primary,
                                       ),
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Expanded(
-                                      child: Text(
-                                        tutor.location,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
+                                      const SizedBox(width: 2),
+                                      Text(
+                                        tutor.rating.toStringAsFixed(1),
                                         style: GoogleFonts.lexend(
-                                          fontSize: 11,
-                                          color: AppColors.brown,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: AppColors.primary,
                                         ),
                                       ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                          // Booked count chip
-                          if (tutor.bookingCount != null &&
-                              tutor.bookingCount! > 0) ...[
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: AppColors.inputBackground,
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(Icons.history_rounded,
-                                      size: 11, color: AppColors.brown),
-                                  const SizedBox(width: 3),
-                                  Text(
-                                    '${tutor.bookingCount}×',
-                                    style: GoogleFonts.lexend(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
-                                      color: AppColors.brown,
-                                    ),
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: Text(
+                                          tutor.location,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: GoogleFonts.lexend(
+                                            fontSize: 11,
+                                            color: AppColors.brown,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ],
                               ),
                             ),
                           ],
-                        ],
-                      ),
-                      // Slot pill
-                      if (slotRange.isNotEmpty) ...[
-                        const SizedBox(height: 10),
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: AppColors.primary.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.access_time_rounded,
-                                  size: 13, color: AppColors.primary),
-                              const SizedBox(width: 6),
-                              Expanded(
-                                child: Text(
-                                  slotRange,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: GoogleFonts.lexend(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                    color: AppColors.primary,
-                                  ),
-                                ),
-                              ),
-                              if (countdown.isNotEmpty) ...[
-                                const SizedBox(width: 8),
-                                Text(
-                                  countdown,
-                                  style: GoogleFonts.lexend(
-                                    fontSize: 11,
-                                    color: AppColors.brown,
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
                         ),
+                        const SizedBox(height: 12),
+                        if (slotRange.isNotEmpty)
+                          Text(
+                            slotRange,
+                            style: GoogleFonts.lexend(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.black,
+                            ),
+                          ),
+                        if (countdown.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            countdown,
+                            style: GoogleFonts.lexend(
+                              fontSize: 12,
+                              color: AppColors.brown,
+                            ),
+                          ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ],
@@ -470,10 +466,9 @@ class _GoToTutorSection extends StatelessWidget {
   }
 }
 
-// ─── Reusable detail widgets ─────────────────────────────────────────────────
-
 class _InfoCard extends StatelessWidget {
   final List<Widget> children;
+
   const _InfoCard({required this.children});
 
   @override
@@ -491,24 +486,23 @@ class _InfoCard extends StatelessWidget {
 class _InfoRow extends StatelessWidget {
   final String label;
   final String value;
+
   const _InfoRow(this.label, this.value);
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (label.isNotEmpty) ...[
-            SizedBox(
-              width: 90,
-              child: Text(label, style: AppTextStyles.itemSubtitle),
-            ),
-          ],
+          SizedBox(
+            width: 72,
+            child: Text(label, style: AppTextStyles.itemSubtitle),
+          ),
           Expanded(
             child: Text(
-              value.isNotEmpty ? value : '—',
+              value,
+              textAlign: TextAlign.right,
               style: AppTextStyles.itemTitle,
             ),
           ),
@@ -521,7 +515,6 @@ class _InfoRow extends StatelessWidget {
 class _Divider extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return const Divider(
-        height: 1, thickness: 1, color: Color(0xFFEDE5D0), indent: 16);
+    return const Divider(height: 1, thickness: 1, color: Color(0xFFE9E1CF));
   }
 }

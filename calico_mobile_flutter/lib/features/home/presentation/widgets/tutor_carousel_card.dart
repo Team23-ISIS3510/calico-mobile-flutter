@@ -8,8 +8,9 @@ import '../../data/models/available_tutor_model.dart';
 /// with a live countdown.
 class TutorCarouselCard extends StatelessWidget {
   final AvailableTutorModel tutor;
+  final VoidCallback? onTap;
 
-  const TutorCarouselCard({super.key, required this.tutor});
+  const TutorCarouselCard({super.key, required this.tutor, this.onTap});
 
   /// "Today  3:00 – 4:00 PM" or "Tomorrow  3:00 PM" etc.
   String _slotRange() {
@@ -75,143 +76,164 @@ class TutorCarouselCard extends StatelessWidget {
     final slotRange = _slotRange();
     final countdown = _countdown();
 
-    return Container(
-      width: 204,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.inputBackground,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Avatar + name + rating row
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
+        splashColor: AppColors.primary.withOpacity(0.2),
+        child: Container(
+          width: 204,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: AppColors.inputBackground,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: const BoxDecoration(
-                  color: AppColors.primary,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.person, color: Colors.white, size: 20),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      tutor.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.lexend(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.black,
-                      ),
+              // Avatar + name + rating row
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: const BoxDecoration(
+                      color: AppColors.primary,
+                      shape: BoxShape.circle,
                     ),
-                    const SizedBox(height: 2),
-                    Row(
+                    child: const Icon(
+                      Icons.person,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Icon(
-                          Icons.star_rounded,
-                          size: 13,
-                          color: AppColors.primary,
-                        ),
-                        const SizedBox(width: 2),
                         Text(
-                          tutor.rating.toStringAsFixed(1),
+                          tutor.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: GoogleFonts.lexend(
-                            fontSize: 12,
+                            fontSize: 13,
                             fontWeight: FontWeight.w600,
-                            color: AppColors.primary,
+                            color: AppColors.black,
                           ),
                         ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            tutor.location,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.lexend(
-                              fontSize: 11,
-                              color: AppColors.brown,
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.star_rounded,
+                              size: 13,
+                              color: AppColors.primary,
                             ),
-                          ),
+                            const SizedBox(width: 2),
+                            Text(
+                              tutor.rating.toStringAsFixed(1),
+                              style: GoogleFonts.lexend(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.primary,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                tutor.location,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: GoogleFonts.lexend(
+                                  fontSize: 11,
+                                  color: AppColors.brown,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          // Slot pill
-          if (slotRange.isNotEmpty)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-              decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.access_time_rounded,
-                    size: 12,
-                    color: AppColors.primary,
-                  ),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      slotRange,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.lexend(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
-                        color: AppColors.primary,
-                      ),
                     ),
                   ),
                 ],
               ),
-            ),
-          // Countdown
-          if (countdown.isNotEmpty) ...[
-            const SizedBox(height: 5),
-            Text(
-              countdown,
-              style: GoogleFonts.lexend(fontSize: 11, color: AppColors.brown),
-            ),
-          ],
-          // Booking history badge — only shown on the "returning tutor" card
-          if (tutor.bookingCount != null && tutor.bookingCount! > 0) ...[
-            const SizedBox(height: 5),
-            Row(
-              children: [
-                const Icon(
-                  Icons.history_rounded,
-                  size: 12,
-                  color: AppColors.brown,
+              const SizedBox(height: 10),
+
+              // Slot pill
+              if (slotRange.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.access_time_rounded,
+                        size: 12,
+                        color: AppColors.primary,
+                      ),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          slotRange,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.lexend(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                const SizedBox(width: 3),
+
+              // Countdown
+              if (countdown.isNotEmpty) ...[
+                const SizedBox(height: 5),
                 Text(
-                  'Booked ${tutor.bookingCount}×',
+                  countdown,
                   style: GoogleFonts.lexend(
                     fontSize: 11,
                     color: AppColors.brown,
                   ),
                 ),
               ],
-            ),
-          ],
-        ],
+
+              // Booking history badge
+              if (tutor.bookingCount != null && tutor.bookingCount! > 0) ...[
+                const SizedBox(height: 5),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.history_rounded,
+                      size: 12,
+                      color: AppColors.brown,
+                    ),
+                    const SizedBox(width: 3),
+                    Text(
+                      'Booked ${tutor.bookingCount}×',
+                      style: GoogleFonts.lexend(
+                        fontSize: 11,
+                        color: AppColors.brown,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }

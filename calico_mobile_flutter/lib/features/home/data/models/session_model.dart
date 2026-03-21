@@ -25,15 +25,20 @@ class SessionModel {
     return SessionModel(
       id: json['id']?.toString() ?? '',
       tutorId: json['tutorId']?.toString() ?? '',
-      studentId: json['studentId']?.toString() ??
+      studentId:
+          json['studentId']?.toString() ??
           json['studentEmail']?.toString() ??
           '',
-      startDateTime: _parseDate(json['startDateTime'] ?? json['start']),
-      endDateTime: _parseDate(json['endDateTime'] ?? json['end']),
+      startDateTime: _parseDate(
+        json['startDateTime'] ?? json['start'] ?? json['scheduledStart'],
+      ),
+      endDateTime: _parseDate(
+        json['endDateTime'] ?? json['end'] ?? json['scheduledEnd'],
+      ),
       courseId: json['courseId']?.toString() ?? json['course']?.toString(),
       courseName: json['courseName']?.toString(),
-      tutorName: json['tutorName']?.toString() ??
-          json['tutorEmail']?.toString(),
+      tutorName:
+          json['tutorName']?.toString() ?? json['tutorEmail']?.toString(),
       status: json['status']?.toString() ?? 'pending',
     );
   }
@@ -46,8 +51,8 @@ class SessionModel {
     final hour = rawHour == 0
         ? 12
         : rawHour > 12
-            ? rawHour - 12
-            : rawHour;
+        ? rawHour - 12
+        : rawHour;
     final ampm = rawHour >= 12 ? 'PM' : 'AM';
     final min = d.minute.toString().padLeft(2, '0');
     final mm = d.month.toString().padLeft(2, '0');
@@ -55,23 +60,27 @@ class SessionModel {
     return '$mm/$dd/${d.year} · $hour:$min $ampm';
   }
 
-  String get displayTutor =>
-      tutorName != null && tutorName!.isNotEmpty ? 'Tutor: $tutorName' : 'Tutor: $tutorId';
+  String get displayTutor => tutorName != null && tutorName!.isNotEmpty
+      ? 'Tutor: $tutorName'
+      : 'Tutor: $tutorId';
 
-  String get displayCourse =>
-      courseName != null && courseName!.isNotEmpty
-          ? courseName!
-          : courseId ?? '';
+  String get displayCourse => courseName != null && courseName!.isNotEmpty
+      ? courseName!
+      : courseId ?? '';
 
   /// Parses both ISO 8601 strings and Firestore Timestamp JSON objects.
   static DateTime? _parseDate(dynamic value) {
     if (value == null) return null;
-    if (value is String) return DateTime.tryParse(value);
+    if (value is String) {
+      final parsed = DateTime.tryParse(value);
+      return parsed?.toLocal();
+    }
     if (value is Map) {
       final seconds = value['_seconds'] ?? value['seconds'];
       if (seconds != null) {
         return DateTime.fromMillisecondsSinceEpoch(
-            (seconds as num).toInt() * 1000);
+          (seconds as num).toInt() * 1000,
+        ).toLocal();
       }
     }
     return null;

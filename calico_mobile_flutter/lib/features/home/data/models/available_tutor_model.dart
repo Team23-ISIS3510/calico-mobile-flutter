@@ -10,6 +10,7 @@ class AvailableTutorModel {
   final String? parentAvailabilityId;
   final int? nextSlotIndex;
   final int availableSlotsCount;
+  final int? bookingCount;
 
   const AvailableTutorModel({
     required this.id,
@@ -23,6 +24,7 @@ class AvailableTutorModel {
     this.parentAvailabilityId,
     this.nextSlotIndex,
     required this.availableSlotsCount,
+    this.bookingCount,
   });
 
   factory AvailableTutorModel.fromJson(Map<String, dynamic> json) {
@@ -43,6 +45,7 @@ class AvailableTutorModel {
       parentAvailabilityId: slot?['parentAvailabilityId']?.toString(),
       nextSlotIndex: (slot?['slotIndex'] as num?)?.toInt(),
       availableSlotsCount: (json['availableSlotsCount'] as num?)?.toInt() ?? 0,
+      bookingCount: (json['bookingCount'] as num?)?.toInt(),
     );
   }
 }
