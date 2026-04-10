@@ -192,15 +192,20 @@ class _HomeScreenState extends State<HomeScreen> {
           ..._controller.courses.map(
             (c) => CourseCard(
               course: c,
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => CourseDetailScreen(
-                    course: c,
-                    studentId: widget.studentId,
+              onTap: () async {
+                final booked = await Navigator.push<bool>(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => CourseDetailScreen(
+                      course: c,
+                      studentId: widget.studentId,
+                    ),
                   ),
-                ),
-              ),
+                );
+                if (booked == true) {
+                  _controller.loadData(widget.studentId);
+                }
+              },
             ),
           ),
 
