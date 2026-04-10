@@ -9,12 +9,14 @@ class BookingBottomSheet extends StatefulWidget {
   final TutorEntity tutor;
   final String studentId;
   final String courseId;
+  final VoidCallback? onBooked;
 
   const BookingBottomSheet({
     super.key,
     required this.tutor,
     required this.studentId,
     required this.courseId,
+    this.onBooked,
   });
 
   @override
@@ -87,6 +89,7 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
         _isLoading = false;
         _booked = true;
       });
+      widget.onBooked?.call();
     } catch (e) {
       setState(() {
         _isLoading = false;

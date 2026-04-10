@@ -23,6 +23,29 @@ class AnalyticsRepositoryImpl implements AnalyticsRepository {
   }
 
   @override
+  Future<void> trackCarouselEvent(
+    String event,
+    String courseId, {
+    String? tutorId,
+    double? tutorRating,
+    int? resultCount,
+    int? countdownMinutes,
+  }) async {
+    try {
+      await _apiClient.post('/analytics/event', body: {
+        'event': event,
+        'courseId': courseId,
+        if (tutorId != null) 'tutorId': tutorId,
+        if (tutorRating != null) 'tutorRating': tutorRating,
+        if (resultCount != null) 'resultCount': resultCount,
+        if (countdownMinutes != null) 'countdownMinutes': countdownMinutes,
+      });
+    } catch (_) {
+      // Fire-and-forget: never let tracking break the UI
+    }
+  }
+
+  @override
   Future<List<TutorEntity>> getAvailableTutors(String courseId) async {
     final data = await _apiClient.get(
       '/analytics/bookable-tutors',

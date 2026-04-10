@@ -31,19 +31,27 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
   List<TutorEntity>? _tutors;
   bool _goToTutorLoaded = false;
   TutorEntity? _goToTutor;
+  late final AnalyticsRepository _repo;
 
   @override
   void initState() {
     super.initState();
-    final repo = AnalyticsRepositoryImpl(ApiClient());
-    _loadTutors(repo);
-    if (widget.studentId.isNotEmpty) _loadGoToTutor(repo);
+    _repo = AnalyticsRepositoryImpl(ApiClient());
+    _loadTutors(_repo);
+    if (widget.studentId.isNotEmpty) _loadGoToTutor(_repo);
   }
 
   Future<void> _loadTutors(AnalyticsRepository repo) async {
     try {
       final tutors = await repo.getAvailableTutors(widget.course.id);
-      if (mounted) setState(() => _tutors = tutors);
+      if (mounted) {
+        setState(() => _tutors = tutors);
+        repo.trackCarouselEvent(
+          'results_shown',
+          widget.course.id,
+          resultCount: tutors.length,
+        );
+      }
     } catch (_) {
       if (mounted) setState(() => _tutors = []);
     }
@@ -131,6 +139,26 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
                 studentId: widget.studentId,
                 courseId: widget.course.id,
                 existingSessions: widget.existingSessions,
+                onTutorTapped: (tutor) {
+                  final countdown = tutor.nextSlotStart != null
+                      ? tutor.nextSlotStart!.difference(DateTime.now()).inMinutes
+                      : null;
+                  _repo.trackCarouselEvent(
+                    'tutor_clicked',
+                    widget.course.id,
+                    tutorId: tutor.id,
+                    tutorRating: tutor.rating,
+                    countdownMinutes: countdown,
+                  );
+                },
+                onTutorBooked: (tutor) {
+                  _repo.trackCarouselEvent(
+                    'booking_completed',
+                    widget.course.id,
+                    tutorId: tutor.id,
+                    tutorRating: tutor.rating,
+                  );
+                },
               ),
             ],
 
@@ -147,12 +175,16 @@ class _TutorSection extends StatelessWidget {
   final String studentId;
   final String courseId;
   final List<SessionEntity> existingSessions;
+  final void Function(TutorEntity tutor)? onTutorTapped;
+  final void Function(TutorEntity tutor)? onTutorBooked;
 
   const _TutorSection({
     required this.tutors,
     required this.studentId,
     required this.courseId,
     required this.existingSessions,
+    this.onTutorTapped,
+    this.onTutorBooked,
   });
 
   @override
@@ -232,6 +264,7 @@ class _TutorSection extends StatelessWidget {
                       );
                       return;
                     }
+                    onTutorTapped?.call(tutor);
                     final booked = await showModalBottomSheet<bool>(
                       context: context,
                       isScrollControlled: true,
@@ -240,6 +273,7 @@ class _TutorSection extends StatelessWidget {
                         tutor: tutor,
                         studentId: studentId,
                         courseId: courseId,
+                        onBooked: () => onTutorBooked?.call(tutor),
                       ),
                     );
                     if (booked == true && context.mounted) {
