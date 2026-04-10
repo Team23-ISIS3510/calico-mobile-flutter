@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 import '../errors/app_exception.dart';
 
 class ApiClient {
-  static const String _baseUrl = 'http://localhost:3000';
+  static const String _baseUrl = 'http://localhost:3000'; //http://192.168.0.16:3000
   static const Duration _timeout = Duration(seconds: 15);
 
   final http.Client _client;
