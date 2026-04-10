@@ -36,7 +36,11 @@ class HomeController extends ChangeNotifier {
       ]);
 
       _allCourses = results[0] as List<CourseModel>;
-      _sessions = results[1] as List<SessionModel>;
+      final now = DateTime.now();
+      _sessions = (results[1] as List<SessionModel>)
+          .where((s) => s.startDateTime != null && s.startDateTime!.isAfter(now))
+          .toList()
+        ..sort((a, b) => a.startDateTime!.compareTo(b.startDateTime!));
       _filteredCourses = List.from(_allCourses);
       _status = HomeStatus.success;
     } on Exception catch (e) {
