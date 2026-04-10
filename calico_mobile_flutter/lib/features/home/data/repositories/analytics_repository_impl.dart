@@ -1,4 +1,5 @@
 import '../../../../core/network/api_client.dart';
+import '../../domain/entities/tutor_entity.dart';
 import '../../domain/repositories/analytics_repository.dart';
 import '../models/available_tutor_model.dart';
 
@@ -8,7 +9,7 @@ class AnalyticsRepositoryImpl implements AnalyticsRepository {
   const AnalyticsRepositoryImpl(this._apiClient);
 
   @override
-  Future<AvailableTutorModel?> getReturningTutor(
+  Future<TutorEntity?> getReturningTutor(
     String studentId,
     String courseId,
   ) async {
@@ -18,11 +19,11 @@ class AnalyticsRepositoryImpl implements AnalyticsRepository {
     );
     final raw = data['tutor'];
     if (raw == null) return null;
-    return AvailableTutorModel.fromJson(raw as Map<String, dynamic>);
+    return AvailableTutorModel.fromJson(raw as Map<String, dynamic>).toEntity();
   }
 
   @override
-  Future<List<AvailableTutorModel>> getAvailableTutors(String courseId) async {
+  Future<List<TutorEntity>> getAvailableTutors(String courseId) async {
     final data = await _apiClient.get(
       '/analytics/bookable-tutors',
       query: {'course': courseId},
@@ -30,7 +31,7 @@ class AnalyticsRepositoryImpl implements AnalyticsRepository {
     final raw = data['tutors'] as List<dynamic>? ?? [];
     return raw
         .whereType<Map<String, dynamic>>()
-        .map(AvailableTutorModel.fromJson)
+        .map((json) => AvailableTutorModel.fromJson(json).toEntity())
         .toList();
   }
 }

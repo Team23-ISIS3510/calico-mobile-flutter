@@ -1,3 +1,5 @@
+import '../../domain/entities/tutor_entity.dart';
+
 class AvailableTutorModel {
   final String id;
   final String name;
@@ -48,4 +50,19 @@ class AvailableTutorModel {
       bookingCount: (json['bookingCount'] as num?)?.toInt(),
     );
   }
+
+  TutorEntity toEntity() => TutorEntity(
+        id: id,
+        name: name,
+        rating: rating,
+        hourlyRate: hourlyRate,
+        profileImage: profileImage,
+        location: location,
+        nextSlotStart: nextSlotStart,
+        nextSlotEnd: nextSlotEnd,
+        parentAvailabilityId: parentAvailabilityId,
+        nextSlotIndex: nextSlotIndex,
+        availableSlotsCount: availableSlotsCount,
+        bookingCount: bookingCount,
+      );
 }

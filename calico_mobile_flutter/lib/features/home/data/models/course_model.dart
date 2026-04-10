@@ -1,3 +1,5 @@
+import '../../domain/entities/course_entity.dart';
+
 class CourseModel {
   final String id;
   final String name;
@@ -28,4 +30,13 @@ class CourseModel {
           [],
     );
   }
+
+  CourseEntity toEntity() => CourseEntity(
+        id: id,
+        name: name,
+        code: code,
+        credits: credits,
+        faculty: faculty,
+        prerequisites: prerequisites,
+      );
 }

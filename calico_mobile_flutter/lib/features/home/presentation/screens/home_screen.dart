@@ -1,5 +1,5 @@
-import 'package:calico_mobile_flutter/features/home/data/models/course_model.dart';
-import 'package:calico_mobile_flutter/features/home/data/models/session_model.dart';
+import 'package:calico_mobile_flutter/features/home/domain/entities/course_entity.dart';
+import 'package:calico_mobile_flutter/features/home/domain/entities/session_entity.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/constants/app_colors.dart';
@@ -374,7 +374,7 @@ class _SectionHeader extends StatelessWidget {
 }
 
 class _CourseItem extends StatelessWidget {
-  final CourseModel course;
+  final CourseEntity course;
   final VoidCallback onTap;
 
   const _CourseItem({required this.course, required this.onTap});
@@ -430,7 +430,7 @@ class _CourseItem extends StatelessWidget {
 }
 
 class _SessionItem extends StatelessWidget {
-  final SessionModel session;
+  final SessionEntity session;
   final VoidCallback onTap;
 
   const _SessionItem({required this.session, required this.onTap});

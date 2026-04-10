@@ -1,5 +1,5 @@
-import '../../data/models/course_model.dart';
+import '../entities/course_entity.dart';
 
 abstract class CourseRepository {
-  Future<List<CourseModel>> getCourses();
+  Future<List<CourseEntity>> getCourses();
 }

@@ -3,10 +3,10 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_text_styles.dart';
 import '../../../../core/network/api_client.dart';
-import '../../data/models/available_tutor_model.dart';
+import '../../domain/entities/tutor_entity.dart';
 
 class BookingBottomSheet extends StatefulWidget {
-  final AvailableTutorModel tutor;
+  final TutorEntity tutor;
   final String studentId;
   final String courseId;
 

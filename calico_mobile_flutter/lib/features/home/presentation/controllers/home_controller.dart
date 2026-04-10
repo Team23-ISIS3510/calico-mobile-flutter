@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
-import '../../data/models/course_model.dart';
-import '../../data/models/session_model.dart';
+import '../../domain/entities/course_entity.dart';
+import '../../domain/entities/session_entity.dart';
 import '../../domain/repositories/course_repository.dart';
 import '../../domain/repositories/session_repository.dart';
 
@@ -14,14 +14,14 @@ class HomeController extends ChangeNotifier {
   HomeController(this._courseRepo, this._sessionRepo);
 
   HomeStatus _status = HomeStatus.idle;
-  List<CourseModel> _allCourses = [];
-  List<CourseModel> _filteredCourses = [];
-  List<SessionModel> _sessions = [];
+  List<CourseEntity> _allCourses = [];
+  List<CourseEntity> _filteredCourses = [];
+  List<SessionEntity> _sessions = [];
   String? _error;
 
   HomeStatus get status => _status;
-  List<CourseModel> get courses => _filteredCourses;
-  List<SessionModel> get sessions => _sessions;
+  List<CourseEntity> get courses => _filteredCourses;
+  List<SessionEntity> get sessions => _sessions;
   String? get error => _error;
   bool get isLoading => _status == HomeStatus.loading;
 
@@ -35,9 +35,9 @@ class HomeController extends ChangeNotifier {
         _sessionRepo.getStudentSessions(studentId),
       ]);
 
-      _allCourses = results[0] as List<CourseModel>;
+      _allCourses = results[0] as List<CourseEntity>;
       final now = DateTime.now();
-      _sessions = (results[1] as List<SessionModel>)
+      _sessions = (results[1] as List<SessionEntity>)
           .where((s) => s.startDateTime != null && s.startDateTime!.isAfter(now))
           .toList()
         ..sort((a, b) => a.startDateTime!.compareTo(b.startDateTime!));

@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_text_styles.dart';
-import '../../data/models/session_model.dart';
+import '../../domain/entities/session_entity.dart';
 
 class SessionDetailScreen extends StatelessWidget {
-  final SessionModel session;
+  final SessionEntity session;
 
   const SessionDetailScreen({super.key, required this.session});
 

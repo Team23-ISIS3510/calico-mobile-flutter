@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_text_styles.dart';
-import '../../data/models/session_model.dart';
+import '../../domain/entities/session_entity.dart';
 
-/// Tappable list row that displays a single [SessionModel].
+/// Tappable list row that displays a single [SessionEntity].
 ///
 /// Reusable across any screen within the home feature that lists sessions
 /// (home feed, upcoming sessions view, calendar detail, etc.).
@@ -11,7 +11,7 @@ import '../../data/models/session_model.dart';
 /// Usage:
 ///   SessionCard(session: session, onTap: () => _openDetail(session))
 class SessionCard extends StatelessWidget {
-  final SessionModel session;
+  final SessionEntity session;
   final VoidCallback onTap;
 
   const SessionCard({

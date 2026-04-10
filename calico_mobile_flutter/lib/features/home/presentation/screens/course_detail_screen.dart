@@ -3,17 +3,18 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_text_styles.dart';
 import '../../../../core/network/api_client.dart';
-import '../../data/models/available_tutor_model.dart';
-import '../../data/models/course_model.dart';
-import '../../data/models/session_model.dart';
+import '../../domain/entities/course_entity.dart';
+import '../../domain/entities/session_entity.dart';
+import '../../domain/entities/tutor_entity.dart';
+import '../../domain/repositories/analytics_repository.dart';
 import '../../data/repositories/analytics_repository_impl.dart';
 import '../widgets/tutor_carousel_card.dart';
 import '../widgets/booking_bottom_sheet.dart';
 
 class CourseDetailScreen extends StatefulWidget {
-  final CourseModel course;
+  final CourseEntity course;
   final String studentId;
-  final List<SessionModel> existingSessions;
+  final List<SessionEntity> existingSessions;
 
   const CourseDetailScreen({
     super.key,
@@ -27,9 +28,9 @@ class CourseDetailScreen extends StatefulWidget {
 }
 
 class _CourseDetailScreenState extends State<CourseDetailScreen> {
-  List<AvailableTutorModel>? _tutors;
+  List<TutorEntity>? _tutors;
   bool _goToTutorLoaded = false;
-  AvailableTutorModel? _goToTutor;
+  TutorEntity? _goToTutor;
 
   @override
   void initState() {
@@ -39,7 +40,7 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
     if (widget.studentId.isNotEmpty) _loadGoToTutor(repo);
   }
 
-  Future<void> _loadTutors(AnalyticsRepositoryImpl repo) async {
+  Future<void> _loadTutors(AnalyticsRepository repo) async {
     try {
       final tutors = await repo.getAvailableTutors(widget.course.id);
       if (mounted) setState(() => _tutors = tutors);
@@ -48,7 +49,7 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
     }
   }
 
-  Future<void> _loadGoToTutor(AnalyticsRepositoryImpl repo) async {
+  Future<void> _loadGoToTutor(AnalyticsRepository repo) async {
     try {
       final tutor = await repo.getReturningTutor(
         widget.studentId,
@@ -142,10 +143,10 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
 }
 
 class _TutorSection extends StatelessWidget {
-  final List<AvailableTutorModel>? tutors;
+  final List<TutorEntity>? tutors;
   final String studentId;
   final String courseId;
-  final List<SessionModel> existingSessions;
+  final List<SessionEntity> existingSessions;
 
   const _TutorSection({
     required this.tutors,
@@ -255,10 +256,10 @@ class _TutorSection extends StatelessWidget {
 }
 
 class _GoToTutorSection extends StatelessWidget {
-  final AvailableTutorModel tutor;
+  final TutorEntity tutor;
   final String studentId;
   final String courseId;
-  final List<SessionModel> existingSessions;
+  final List<SessionEntity> existingSessions;
 
   const _GoToTutorSection({
     required this.tutor,

@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_text_styles.dart';
-import '../../data/models/course_model.dart';
+import '../../domain/entities/course_entity.dart';
 
-/// Tappable list row that displays a single [CourseModel].
+/// Tappable list row that displays a single [CourseEntity].
 ///
 /// Reusable across any screen within the home feature that lists courses
 /// (home feed, search results, tutor profile, etc.).
@@ -11,7 +11,7 @@ import '../../data/models/course_model.dart';
 /// Usage:
 ///   CourseCard(course: course, onTap: () => _openDetail(course))
 class CourseCard extends StatelessWidget {
-  final CourseModel course;
+  final CourseEntity course;
   final VoidCallback onTap;
 
   const CourseCard({
