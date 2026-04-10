@@ -5,6 +5,7 @@ import '../../../../core/constants/app_text_styles.dart';
 import '../../../../core/network/api_client.dart';
 import '../../data/models/available_tutor_model.dart';
 import '../../data/models/course_model.dart';
+import '../../data/models/session_model.dart';
 import '../../data/repositories/analytics_repository_impl.dart';
 import '../widgets/tutor_carousel_card.dart';
 import '../widgets/booking_bottom_sheet.dart';
@@ -12,11 +13,13 @@ import '../widgets/booking_bottom_sheet.dart';
 class CourseDetailScreen extends StatefulWidget {
   final CourseModel course;
   final String studentId;
+  final List<SessionModel> existingSessions;
 
   const CourseDetailScreen({
     super.key,
     required this.course,
     required this.studentId,
+    this.existingSessions = const [],
   });
 
   @override
@@ -116,6 +119,7 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
                 tutor: _goToTutor!,
                 studentId: widget.studentId,
                 courseId: widget.course.id,
+                existingSessions: widget.existingSessions,
               ),
             ],
 
@@ -125,6 +129,7 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
                 tutors: _tutors,
                 studentId: widget.studentId,
                 courseId: widget.course.id,
+                existingSessions: widget.existingSessions,
               ),
             ],
 
@@ -140,11 +145,13 @@ class _TutorSection extends StatelessWidget {
   final List<AvailableTutorModel>? tutors;
   final String studentId;
   final String courseId;
+  final List<SessionModel> existingSessions;
 
   const _TutorSection({
     required this.tutors,
     required this.studentId,
     required this.courseId,
+    required this.existingSessions,
   });
 
   @override
@@ -206,25 +213,40 @@ class _TutorSection extends StatelessWidget {
               clipBehavior: Clip.none,
               itemCount: tutors!.length,
               separatorBuilder: (_, __) => const SizedBox(width: 12),
-              itemBuilder: (context, i) => TutorCarouselCard(
-                tutor: tutors![i],
-                onTap: () async {
-                  final booked = await showModalBottomSheet<bool>(
-                    context: context,
-                    isScrollControlled: true,
-                    backgroundColor: Colors.transparent,
-                    builder: (_) => BookingBottomSheet(
-                      tutor: tutors![i],
-                      studentId: studentId,
-                      courseId: courseId,
-                    ),
-                  );
-
-                  if (booked == true && context.mounted) {
-                    Navigator.pop(context, true);
-                  }
-                },
-              ),
+              itemBuilder: (context, i) {
+                final tutor = tutors![i];
+                final alreadyBooked = existingSessions
+                    .any((s) => s.tutorId == tutor.id);
+                return TutorCarouselCard(
+                  tutor: tutor,
+                  onTap: () async {
+                    if (alreadyBooked) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'Ya tienes una sesión pendiente con ${tutor.name}.',
+                          ),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                      return;
+                    }
+                    final booked = await showModalBottomSheet<bool>(
+                      context: context,
+                      isScrollControlled: true,
+                      backgroundColor: Colors.transparent,
+                      builder: (_) => BookingBottomSheet(
+                        tutor: tutor,
+                        studentId: studentId,
+                        courseId: courseId,
+                      ),
+                    );
+                    if (booked == true && context.mounted) {
+                      Navigator.pop(context, true);
+                    }
+                  },
+                );
+              },
             ),
           ),
       ],
@@ -236,11 +258,13 @@ class _GoToTutorSection extends StatelessWidget {
   final AvailableTutorModel tutor;
   final String studentId;
   final String courseId;
+  final List<SessionModel> existingSessions;
 
   const _GoToTutorSection({
     required this.tutor,
     required this.studentId,
     required this.courseId,
+    required this.existingSessions,
   });
 
   String _slotRange() {
@@ -317,6 +341,19 @@ class _GoToTutorSection extends StatelessWidget {
         const SizedBox(height: 14),
         GestureDetector(
           onTap: () async {
+            final alreadyBooked = existingSessions
+                .any((s) => s.tutorId == tutor.id);
+            if (alreadyBooked) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Ya tienes una sesión pendiente con ${tutor.name}.',
+                  ),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+              return;
+            }
             final booked = await showModalBottomSheet<bool>(
               context: context,
               isScrollControlled: true,

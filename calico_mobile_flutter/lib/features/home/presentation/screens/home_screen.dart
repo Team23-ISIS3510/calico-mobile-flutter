@@ -199,6 +199,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     builder: (_) => CourseDetailScreen(
                       course: c,
                       studentId: widget.studentId,
+                      existingSessions: _controller.sessions,
                     ),
                   ),
                 );
