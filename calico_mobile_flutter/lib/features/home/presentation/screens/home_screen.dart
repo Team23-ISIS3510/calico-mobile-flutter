@@ -18,6 +18,7 @@ import 'course_detail_screen.dart';
 import 'session_detail_screen.dart';
 import 'package:calico_mobile_flutter/features/profile/presentation/screens/profile_screen.dart';
 import '../../../../core/utils/context_aware_helper.dart';
+import '../../../../core/services/motion_alert_service.dart';
 
 class HomeScreen extends StatefulWidget {
   /// Firebase UID of the logged-in student. Pass empty string for guest mode.
@@ -32,7 +33,13 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   late final HomeController _controller;
   final _searchController = TextEditingController();
+  final _alertEmailController = TextEditingController();
+  final _studentNameController = TextEditingController();
+  final _locationController = TextEditingController();
   int _selectedTab = 0;
+  late final MotionAlertService _motionAlertService;
+  bool _isAlertMonitoring = false;
+  bool _isSendingAlert = false;
 
   @override
   void initState() {
@@ -42,8 +49,12 @@ class _HomeScreenState extends State<HomeScreen> {
       CourseRepositoryImpl(client),
       SessionRepositoryImpl(client),
     );
+    _motionAlertService = MotionAlertService(apiClient: client);
     _controller.addListener(_onUpdate);
     _controller.loadData(widget.studentId);
+    _studentNameController.text = widget.studentId.isEmpty
+        ? 'Estudiante'
+        : widget.studentId;
   }
 
   void _onUpdate() => setState(() {});
@@ -93,7 +104,72 @@ class _HomeScreenState extends State<HomeScreen> {
     _controller.removeListener(_onUpdate);
     _controller.dispose();
     _searchController.dispose();
+    _alertEmailController.dispose();
+    _studentNameController.dispose();
+    _locationController.dispose();
+    _motionAlertService.dispose();
     super.dispose();
+  }
+
+  Future<void> _toggleMotionMonitoring(bool enabled) async {
+    if (enabled && _alertEmailController.text.trim().isEmpty) {
+      _showSnackBar(
+        'Ingresa el correo de alerta antes de activar el monitoreo.',
+        isError: true,
+      );
+      return;
+    }
+
+    if (enabled) {
+      _motionAlertService.start(onTriggered: _onMotionAlertTriggered);
+      setState(() => _isAlertMonitoring = true);
+      _showSnackBar('Monitoreo de movimiento activado.');
+      return;
+    }
+
+    await _motionAlertService.stop();
+    setState(() => _isAlertMonitoring = false);
+    _showSnackBar('Monitoreo de movimiento detenido.');
+  }
+
+  Future<void> _onMotionAlertTriggered(String reason) async {
+    if (_isSendingAlert) return;
+    setState(() => _isSendingAlert = true);
+
+    try {
+      await _motionAlertService.sendEmergencyEmail(
+        toEmail: _alertEmailController.text.trim(),
+        toName: 'Tutor de guardia',
+        studentName: _studentNameController.text.trim().isEmpty
+            ? 'Estudiante'
+            : _studentNameController.text.trim(),
+        alertReason: reason,
+        location: _locationController.text.trim().isEmpty
+            ? null
+            : _locationController.text.trim(),
+      );
+      if (mounted) {
+        _showSnackBar('Alerta enviada por correo.');
+      }
+    } catch (e) {
+      if (mounted) {
+        _showSnackBar('No se pudo enviar la alerta: $e', isError: true);
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSendingAlert = false);
+      }
+    }
+  }
+
+  void _showSnackBar(String message, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message, style: GoogleFonts.lexend(fontSize: 14)),
+        backgroundColor: isError ? const Color(0xFFB00020) : Colors.green,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   @override
@@ -118,6 +194,14 @@ class _HomeScreenState extends State<HomeScreen> {
                     hasSessions: _controller.sessions.isNotEmpty,
                   ),
                   icon: ContextAwareHelper.getIcon(),
+                ),
+                _EmergencyAlertCard(
+                  alertEmailController: _alertEmailController,
+                  studentNameController: _studentNameController,
+                  locationController: _locationController,
+                  isMonitoring: _isAlertMonitoring,
+                  isSending: _isSendingAlert,
+                  onToggleMonitoring: _toggleMotionMonitoring,
                 ),
               ],
             ),
@@ -351,6 +435,104 @@ class _ContextAwareBanner extends StatelessWidget {
                   Text(message, style: AppTextStyles.itemSubtitle),
                 ],
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EmergencyAlertCard extends StatelessWidget {
+  const _EmergencyAlertCard({
+    required this.alertEmailController,
+    required this.studentNameController,
+    required this.locationController,
+    required this.isMonitoring,
+    required this.isSending,
+    required this.onToggleMonitoring,
+  });
+
+  final TextEditingController alertEmailController;
+  final TextEditingController studentNameController;
+  final TextEditingController locationController;
+  final bool isMonitoring;
+  final bool isSending;
+  final ValueChanged<bool> onToggleMonitoring;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.inputBackground),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Alerta por movimiento', style: AppTextStyles.itemTitle),
+            const SizedBox(height: 6),
+            Text(
+              'Si detecta movimientos bruscos repetidos, se envia correo de emergencia.',
+              style: AppTextStyles.itemSubtitle,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: alertEmailController,
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(
+                labelText: 'Correo de alerta',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: studentNameController,
+              decoration: const InputDecoration(
+                labelText: 'Nombre del estudiante',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: locationController,
+              decoration: const InputDecoration(
+                labelText: 'Ubicacion (opcional)',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    isMonitoring
+                        ? 'Monitoreo activo'
+                        : 'Monitoreo inactivo',
+                    style: AppTextStyles.itemSubtitle,
+                  ),
+                ),
+                if (isSending)
+                  const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                const SizedBox(width: 8),
+                Switch(
+                  value: isMonitoring,
+                  onChanged: onToggleMonitoring,
+                  activeThumbColor: AppColors.primary,
+                ),
+              ],
             ),
           ],
         ),
