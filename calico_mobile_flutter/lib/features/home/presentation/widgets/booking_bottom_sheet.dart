@@ -25,6 +25,7 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
   bool _isLoading = false;
   bool _booked = false;
   String? _error;
+  double? _successRate;
 
   String _formatSlot() {
     final start = widget.tutor.nextSlotStart?.toLocal();
@@ -83,9 +84,15 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
             'slotIndex': widget.tutor.nextSlotIndex,
         },
       );
+      double? rate;
+      try {
+        final analytics = await client.get('/analytics/booking-success');
+        rate = (analytics['successRate'] as num?)?.toDouble();
+      } catch (_) {}
       setState(() {
         _isLoading = false;
         _booked = true;
+        _successRate = rate;
       });
     } catch (e) {
       setState(() {
@@ -124,13 +131,15 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
             const Icon(Icons.check_circle, color: Colors.green, size: 64),
             const SizedBox(height: 12),
             Text(
-              'Booking confirmed!',
+              '¡Quedaste agendado!',
               textAlign: TextAlign.center,
               style: AppTextStyles.sectionTitle,
             ),
             const SizedBox(height: 8),
             Text(
-              'Your session with ${widget.tutor.name} has been booked.',
+              _successRate != null
+                  ? 'El ${_successRate!.toStringAsFixed(0)}% de las solicitudes de tutoría se agendan con éxito.'
+                  : 'Tu sesión con ${widget.tutor.name} ha sido confirmada.',
               textAlign: TextAlign.center,
               style: AppTextStyles.itemSubtitle,
             ),
