@@ -25,6 +25,25 @@ class HomeController extends ChangeNotifier {
   String? get error => _error;
   bool get isLoading => _status == HomeStatus.loading;
 
+  /// Top 3 courses the student has had the most sessions in.
+  List<CourseModel> get recommendedCourses {
+    if (_sessions.isEmpty || _allCourses.isEmpty) return [];
+    final counts = <String, int>{};
+    for (final s in _sessions) {
+      if (s.courseId != null && s.courseId!.isNotEmpty) {
+        counts[s.courseId!] = (counts[s.courseId!] ?? 0) + 1;
+      }
+    }
+    final sorted = counts.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final courseMap = {for (final c in _allCourses) c.id: c};
+    return sorted
+        .take(3)
+        .map((e) => courseMap[e.key])
+        .whereType<CourseModel>()
+        .toList();
+  }
+
   Future<void> loadData(String studentId) async {
     _status = HomeStatus.loading;
     notifyListeners();

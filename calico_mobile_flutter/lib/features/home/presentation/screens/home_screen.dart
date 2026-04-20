@@ -182,8 +182,64 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
+    final recommended = _controller.recommendedCourses;
+
     return ListView(
       children: [
+        // ── Recommended for you ──────────────────────────────────────────
+        if (widget.studentId.isNotEmpty && recommended.isNotEmpty) ...[
+          const SectionHeader('Recommended for you'),
+          SizedBox(
+            height: 80,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: recommended.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 12),
+              itemBuilder: (context, index) {
+                final course = recommended[index];
+                return GestureDetector(
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => CourseDetailScreen(
+                        course: course,
+                        studentId: widget.studentId,
+                      ),
+                    ),
+                  ),
+                  child: Container(
+                    constraints: const BoxConstraints(maxWidth: 200),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.inputBackground,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          course.name,
+                          style: AppTextStyles.itemTitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(course.code, style: AppTextStyles.itemSubtitle),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+
         // ── Courses ──────────────────────────────────────────────────────
         const SectionHeader('Courses'),
         if (_controller.courses.isEmpty)
