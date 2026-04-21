@@ -13,9 +13,14 @@ class SessionRepositoryImpl implements SessionRepository {
     if (studentId.isEmpty) return [];
     final data = await _apiClient.get('/tutoring-sessions/student/$studentId');
     final raw = data['sessions'] as List<dynamic>? ?? [];
+    final now = DateTime.now();
     return raw
         .whereType<Map<String, dynamic>>()
         .map(SessionModel.fromJson)
+        .where((s) {
+          final end = s.endDateTime ?? s.startDateTime;
+          return end == null || end.isAfter(now);
+        })
         .toList();
   }
 }
