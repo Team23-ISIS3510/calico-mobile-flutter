@@ -1,7 +1,4 @@
-import 'package:calico_mobile_flutter/features/home/data/models/course_model.dart';
-import 'package:calico_mobile_flutter/features/home/data/models/session_model.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_text_styles.dart';
 import '../../../../core/network/api_client.dart';
@@ -18,6 +15,7 @@ import 'course_detail_screen.dart';
 import 'session_detail_screen.dart';
 import 'package:calico_mobile_flutter/features/profile/presentation/screens/profile_screen.dart';
 import '../../../../core/utils/context_aware_helper.dart';
+import 'package:geolocator/geolocator.dart';
 
 class HomeScreen extends StatefulWidget {
   /// Firebase UID of the logged-in student. Pass empty string for guest mode.
@@ -33,6 +31,12 @@ class _HomeScreenState extends State<HomeScreen> {
   late final HomeController _controller;
   final _searchController = TextEditingController();
   int _selectedTab = 0;
+  bool _locationLoading = true;
+  bool? _locationOnCampus;
+
+  static const double _campusLat = 4.6015;
+  static const double _campusLng = -74.0665;
+  static const double _campusRadius = 500.0;
 
   @override
   void initState() {
@@ -44,6 +48,33 @@ class _HomeScreenState extends State<HomeScreen> {
     );
     _controller.addListener(_onUpdate);
     _controller.loadData(widget.studentId);
+    _loadLocation();
+  }
+
+  Future<void> _loadLocation() async {
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.low,
+        ),
+      ).timeout(const Duration(seconds: 10));
+
+      final distance = Geolocator.distanceBetween(
+        position.latitude,
+        position.longitude,
+        _campusLat,
+        _campusLng,
+      );
+
+      if (mounted) {
+        setState(() {
+          _locationLoading = false;
+          _locationOnCampus = distance <= _campusRadius;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _locationLoading = false);
+    }
   }
 
   void _onUpdate() => setState(() {});
@@ -118,6 +149,12 @@ class _HomeScreenState extends State<HomeScreen> {
                     hasSessions: _controller.sessions.isNotEmpty,
                   ),
                   icon: ContextAwareHelper.getIcon(),
+                  backgroundColor: ContextAwareHelper.getBackgroundColor(),
+                  accentColor: ContextAwareHelper.getAccentColor(),
+                ),
+                _LocationBadge(
+                  isLoading: _locationLoading,
+                  isOnCampus: _locationOnCampus,
                 ),
               ],
             ),
@@ -199,6 +236,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     builder: (_) => CourseDetailScreen(
                       course: c,
                       studentId: widget.studentId,
+                      isOnCampus: _locationOnCampus,
                     ),
                   ),
                 );
@@ -315,35 +353,44 @@ class _SearchBar extends StatelessWidget {
 class _ContextAwareBanner extends StatelessWidget {
   final String title;
   final String message;
-  final IconData icon;
+  final String icon;
+  final Color backgroundColor;
+  final Color accentColor;
 
   const _ContextAwareBanner({
     required this.title,
     required this.message,
     required this.icon,
+    required this.backgroundColor,
+    required this.accentColor,
   });
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-      child: Container(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 600),
+        curve: Curves.easeInOut,
         width: double.infinity,
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: AppColors.inputBackground,
+          color: backgroundColor,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(icon, color: AppColors.primary, size: 24),
+            Text(icon, style: const TextStyle(fontSize: 22)),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: AppTextStyles.itemTitle),
+                  Text(
+                    title,
+                    style: AppTextStyles.itemTitle.copyWith(color: accentColor),
+                  ),
                   const SizedBox(height: 4),
                   Text(message, style: AppTextStyles.itemSubtitle),
                 ],
@@ -356,189 +403,63 @@ class _ContextAwareBanner extends StatelessWidget {
   }
 }
 
-class _SectionHeader extends StatelessWidget {
-  final String title;
-  const _SectionHeader(this.title);
+class _LocationBadge extends StatelessWidget {
+  final bool isLoading;
+  final bool? isOnCampus;
+
+  const _LocationBadge({required this.isLoading, required this.isOnCampus});
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      // padding: 20px 16px 12px — matches design spec
-      padding: const EdgeInsets.fromLTRB(16, 20, 16, 12),
-      child: Text(title, style: AppTextStyles.sectionTitle),
-    );
-  }
-}
-
-class _CourseItem extends StatelessWidget {
-  final CourseModel course;
-  final VoidCallback onTap;
-
-  const _CourseItem({required this.course, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      child: Container(
-        // padding: 8px 16px, minHeight: 72px — matches design spec
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        constraints: const BoxConstraints(minHeight: 72),
-        color: AppColors.background,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            // Left: icon + text
-            Row(
-              children: [
-                // Book icon in beige square
-                Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: AppColors.inputBackground,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(
-                    Icons.menu_book_outlined,
-                    size: 24,
-                    color: AppColors.black,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                // Name + code
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(course.name, style: AppTextStyles.itemTitle),
-                    Text(course.code, style: AppTextStyles.itemSubtitle),
-                  ],
-                ),
-              ],
+    if (isLoading) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: AppColors.inputBackground,
+              borderRadius: BorderRadius.circular(20),
             ),
-            // Right: chevron
-            const Icon(Icons.chevron_right, size: 28, color: AppColors.black),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SessionItem extends StatelessWidget {
-  final SessionModel session;
-  final VoidCallback onTap;
-
-  const _SessionItem({required this.session, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      child: Container(
-        // padding: 12px 16px, minHeight: 90px — matches design spec
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        constraints: const BoxConstraints(minHeight: 90),
-        color: AppColors.background,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            // Left: icon + text
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Calendar icon in orange square — design uses primary color
-                Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: AppColors.primary,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(
-                    Icons.calendar_today,
-                    size: 24,
-                    color: AppColors.black,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                // Date + tutor + course
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(session.formattedDate, style: AppTextStyles.itemTitle),
-                    Text(
-                      session.displayTutor,
-                      style: AppTextStyles.itemSubtitle,
-                    ),
-                    if (session.displayCourse.isNotEmpty)
-                      Text(
-                        session.displayCourse,
-                        style: AppTextStyles.itemSubtitle,
-                      ),
-                  ],
-                ),
-              ],
+            child: const SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.brown),
             ),
-            // Right: chevron
-            const Icon(Icons.chevron_right, size: 28, color: AppColors.black),
-          ],
+          ),
         ),
-      ),
-    );
-  }
-}
+      );
+    }
 
-class _EmptyState extends StatelessWidget {
-  final String message;
-  const _EmptyState(this.message);
+    if (isOnCampus == null) return const SizedBox.shrink();
 
-  @override
-  Widget build(BuildContext context) {
+    final onCampus = isOnCampus!;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-      child: Text(message, style: AppTextStyles.itemSubtitle),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: onCampus
+                ? const Color(0xFFE8F5E9)
+                : const Color(0xFFE3F2FD),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Text(
+            onCampus ? '📍 On Campus' : '🌐 Virtual Mode',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: onCampus
+                  ? const Color(0xFF2E7D32)
+                  : const Color(0xFF1565C0),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
 
-class _BottomNav extends StatelessWidget {
-  final int selectedIndex;
-  final ValueChanged<int> onTap;
-
-  const _BottomNav({required this.selectedIndex, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return BottomNavigationBar(
-      currentIndex: selectedIndex,
-      onTap: onTap,
-      backgroundColor: Colors.white,
-      selectedItemColor: AppColors.primary,
-      unselectedItemColor: AppColors.brown,
-      type: BottomNavigationBarType.fixed,
-      selectedLabelStyle: GoogleFonts.lexend(
-        fontSize: 12,
-        fontWeight: FontWeight.w500,
-      ),
-      unselectedLabelStyle: GoogleFonts.lexend(
-        fontSize: 12,
-        fontWeight: FontWeight.w400,
-      ),
-      items: const [
-        BottomNavigationBarItem(
-          icon: Icon(Icons.home_outlined),
-          activeIcon: Icon(Icons.home),
-          label: 'Home',
-        ),
-        BottomNavigationBarItem(
-          icon: Icon(Icons.person_outline),
-          activeIcon: Icon(Icons.person),
-          label: 'Profile',
-        ),
-      ],
-    );
-  }
-}

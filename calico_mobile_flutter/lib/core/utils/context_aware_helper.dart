@@ -4,7 +4,7 @@ class ContextAwareHelper {
   static String getTitle() {
     final hour = DateTime.now().hour;
 
-    if (hour < 12) return 'Buenos días';
+    if (hour >= 6 && hour < 12) return 'Buenos días';
     if (hour < 18) return 'Buenas tardes';
     return 'Buenas noches';
   }
@@ -12,7 +12,7 @@ class ContextAwareHelper {
   static String getMessage({required bool hasSessions}) {
     final hour = DateTime.now().hour;
 
-    if (hour < 12) {
+    if (hour >= 6 && hour < 12) {
       return hasSessions
           ? 'Empieza tu día revisando tus próximas sesiones.'
           : 'Es un buen momento para explorar cursos para hoy.';
@@ -29,11 +29,27 @@ class ContextAwareHelper {
         : 'Un buen momento para repasar cursos antes de terminar el día.';
   }
 
-  static IconData getIcon() {
+  static String getIcon() {
     final hour = DateTime.now().hour;
 
-    if (hour < 12) return Icons.wb_sunny_outlined;
-    if (hour < 18) return Icons.light_mode_outlined;
-    return Icons.nightlight_round;
+    if (hour >= 6 && hour < 12) return '☀️';
+    if (hour < 18) return '🌤';
+    return '🌙';
+  }
+
+  static Color getBackgroundColor() {
+    final hour = DateTime.now().hour;
+
+    if (hour >= 6 && hour < 12) return const Color(0xFFFFF8E1);
+    if (hour < 18) return const Color(0xFFFFF3E0);
+    return const Color(0xFFE8EAF6);
+  }
+
+  static Color getAccentColor() {
+    final hour = DateTime.now().hour;
+
+    if (hour >= 6 && hour < 12) return const Color(0xFFF9A825);
+    if (hour < 18) return const Color(0xFFFB8C00);
+    return const Color(0xFF3949AB);
   }
 }

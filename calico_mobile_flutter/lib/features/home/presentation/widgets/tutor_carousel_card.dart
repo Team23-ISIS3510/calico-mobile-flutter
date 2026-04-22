@@ -9,8 +9,10 @@ import '../../data/models/available_tutor_model.dart';
 class TutorCarouselCard extends StatelessWidget {
   final AvailableTutorModel tutor;
   final VoidCallback? onTap;
+  /// null = location unknown (no highlight); true = on campus; false = off campus
+  final bool? isOnCampus;
 
-  const TutorCarouselCard({super.key, required this.tutor, this.onTap});
+  const TutorCarouselCard({super.key, required this.tutor, this.onTap, this.isOnCampus});
 
   /// "Today  3:00 – 4:00 PM" or "Tomorrow  3:00 PM" etc.
   String _slotRange() {
@@ -76,6 +78,16 @@ class TutorCarouselCard extends StatelessWidget {
     final slotRange = _slotRange();
     final countdown = _countdown();
 
+    final isPhysical = tutor.location.toLowerCase() != 'virtual';
+    final highlighted = isOnCampus != null &&
+        ((isOnCampus! && isPhysical) || (!isOnCampus! && !isPhysical));
+    final highlightColor = isOnCampus == true
+        ? const Color(0xFF2E7D32)
+        : const Color(0xFF1565C0);
+    final locationBadge = highlighted
+        ? (isOnCampus! ? '📍 ' : '🌐 ')
+        : '';
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -88,6 +100,9 @@ class TutorCarouselCard extends StatelessWidget {
           decoration: BoxDecoration(
             color: AppColors.inputBackground,
             borderRadius: BorderRadius.circular(12),
+            border: highlighted
+                ? Border.all(color: highlightColor, width: 1.5)
+                : null,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -145,12 +160,14 @@ class TutorCarouselCard extends StatelessWidget {
                             const SizedBox(width: 6),
                             Expanded(
                               child: Text(
-                                tutor.location,
+                                '$locationBadge${tutor.location}',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: GoogleFonts.lexend(
                                   fontSize: 11,
-                                  color: AppColors.brown,
+                                  color: highlighted
+                                      ? highlightColor
+                                      : AppColors.brown,
                                 ),
                               ),
                             ),

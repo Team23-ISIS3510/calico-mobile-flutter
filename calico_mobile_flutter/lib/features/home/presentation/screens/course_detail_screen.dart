@@ -12,11 +12,13 @@ import '../widgets/booking_bottom_sheet.dart';
 class CourseDetailScreen extends StatefulWidget {
   final CourseModel course;
   final String studentId;
+  final bool? isOnCampus;
 
   const CourseDetailScreen({
     super.key,
     required this.course,
     required this.studentId,
+    this.isOnCampus,
   });
 
   @override
@@ -116,6 +118,7 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
                 tutor: _goToTutor!,
                 studentId: widget.studentId,
                 courseId: widget.course.id,
+                isOnCampus: widget.isOnCampus,
               ),
             ],
 
@@ -125,6 +128,7 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
                 tutors: _tutors,
                 studentId: widget.studentId,
                 courseId: widget.course.id,
+                isOnCampus: widget.isOnCampus,
               ),
             ],
 
@@ -140,11 +144,13 @@ class _TutorSection extends StatelessWidget {
   final List<AvailableTutorModel>? tutors;
   final String studentId;
   final String courseId;
+  final bool? isOnCampus;
 
   const _TutorSection({
     required this.tutors,
     required this.studentId,
     required this.courseId,
+    this.isOnCampus,
   });
 
   @override
@@ -208,6 +214,7 @@ class _TutorSection extends StatelessWidget {
               separatorBuilder: (_, __) => const SizedBox(width: 12),
               itemBuilder: (context, i) => TutorCarouselCard(
                 tutor: tutors![i],
+                isOnCampus: isOnCampus,
                 onTap: () async {
                   final booked = await showModalBottomSheet<bool>(
                     context: context,
@@ -236,11 +243,13 @@ class _GoToTutorSection extends StatelessWidget {
   final AvailableTutorModel tutor;
   final String studentId;
   final String courseId;
+  final bool? isOnCampus;
 
   const _GoToTutorSection({
     required this.tutor,
     required this.studentId,
     required this.courseId,
+    this.isOnCampus,
   });
 
   String _slotRange() {
@@ -305,6 +314,14 @@ class _GoToTutorSection extends StatelessWidget {
     final slotRange = _slotRange();
     final countdown = _countdown();
 
+    final isPhysical = tutor.location.toLowerCase() != 'virtual';
+    final highlighted = isOnCampus != null &&
+        ((isOnCampus! && isPhysical) || (!isOnCampus! && !isPhysical));
+    final highlightColor = isOnCampus == true
+        ? const Color(0xFF2E7D32)
+        : const Color(0xFF1565C0);
+    final locationPrefix = highlighted ? (isOnCampus! ? '📍 ' : '🌐 ') : '';
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -334,7 +351,9 @@ class _GoToTutorSection extends StatelessWidget {
           child: Container(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFEDE5D0)),
+              border: highlighted
+                  ? Border.all(color: highlightColor, width: 1.5)
+                  : Border.all(color: const Color(0xFFEDE5D0)),
             ),
             child: Row(
               children: [
@@ -417,12 +436,14 @@ class _GoToTutorSection extends StatelessWidget {
                                       const SizedBox(width: 6),
                                       Expanded(
                                         child: Text(
-                                          tutor.location,
+                                          '$locationPrefix${tutor.location}',
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: GoogleFonts.lexend(
                                             fontSize: 11,
-                                            color: AppColors.brown,
+                                            color: highlighted
+                                                ? highlightColor
+                                                : AppColors.brown,
                                           ),
                                         ),
                                       ),
