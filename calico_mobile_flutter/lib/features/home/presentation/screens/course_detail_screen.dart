@@ -273,6 +273,7 @@ class _TutorSection extends StatelessWidget {
                         tutor: tutor,
                         studentId: studentId,
                         courseId: courseId,
+                        bookingSource: 'carousel',
                         onBooked: () => onTutorBooked?.call(tutor),
                       ),
                     );
@@ -397,6 +398,7 @@ class _GoToTutorSection extends StatelessWidget {
                 tutor: tutor,
                 studentId: studentId,
                 courseId: courseId,
+                bookingSource: 'carousel',
               ),
             );
             if (booked == true && context.mounted) {
