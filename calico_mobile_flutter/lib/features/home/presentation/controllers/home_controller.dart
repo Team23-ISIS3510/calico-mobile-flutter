@@ -26,7 +26,7 @@ class HomeController extends ChangeNotifier {
   bool get isLoading => _status == HomeStatus.loading;
 
   /// Top 3 courses the student has had the most sessions in.
-  List<CourseModel> get recommendedCourses {
+  List<CourseEntity> get recommendedCourses {
     if (_sessions.isEmpty || _allCourses.isEmpty) return [];
     final counts = <String, int>{};
     for (final s in _sessions) {
@@ -40,7 +40,7 @@ class HomeController extends ChangeNotifier {
     return sorted
         .take(3)
         .map((e) => courseMap[e.key])
-        .whereType<CourseModel>()
+        .whereType<CourseEntity>()
         .toList();
   }
 
