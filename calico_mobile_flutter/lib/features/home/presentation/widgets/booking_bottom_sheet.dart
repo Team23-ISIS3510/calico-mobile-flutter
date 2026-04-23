@@ -9,6 +9,7 @@ class BookingBottomSheet extends StatefulWidget {
   final TutorEntity tutor;
   final String studentId;
   final String courseId;
+  final String bookingSource;
   final VoidCallback? onBooked;
 
   const BookingBottomSheet({
@@ -16,6 +17,7 @@ class BookingBottomSheet extends StatefulWidget {
     required this.tutor,
     required this.studentId,
     required this.courseId,
+    required this.bookingSource,
     this.onBooked,
   });
 
@@ -76,6 +78,7 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
           'scheduledEnd': widget.tutor.nextSlotEnd!.toIso8601String(),
           'location': widget.tutor.location,
           'requiresApproval': false,
+          'bookingSource': widget.bookingSource,
 
           'tutorName': widget.tutor.name,
 
