@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:calico_mobile_flutter/core/constants/app_colors.dart';
 import 'package:calico_mobile_flutter/core/constants/app_text_styles.dart';
 import 'package:calico_mobile_flutter/core/network/api_client.dart';
 import 'package:calico_mobile_flutter/core/services/motion_alert_preferences.dart';
+import 'package:calico_mobile_flutter/features/auth/presentation/screens/login_screen.dart';
 import 'package:calico_mobile_flutter/features/profile/data/repositories/profile_repository_impl.dart';
 import 'package:calico_mobile_flutter/features/profile/domain/models/user_profile.dart';
 import 'package:calico_mobile_flutter/features/profile/presentation/controllers/profile_controller.dart';
@@ -18,6 +21,7 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   late final ProfileController _controller;
+  bool _isLoggingOut = false;
   MotionAlertSettings _motionSettings = const MotionAlertSettings(
     alertEmail: '',
     studentName: '',
@@ -84,6 +88,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       onConfigure: _openMotionAlertDialog,
                     ),
                     _ChangeModeButton(),
+                    _LogoutButton(
+                      isLoading: _isLoggingOut,
+                      onPressed: _handleLogout,
+                    ),
                   ],
                 ),
               ),
@@ -254,6 +262,59 @@ class _ProfileScreenState extends State<ProfileScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Configuración de alerta guardada.')),
     );
+  }
+
+  Future<void> _handleLogout() async {
+    final shouldLogout = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Cerrar sesión', style: AppTextStyles.itemTitle),
+        content: Text(
+          '¿Seguro que quieres cerrar sesión?',
+          style: AppTextStyles.itemSubtitle,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text('Cancelar', style: AppTextStyles.linkText),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(
+              'Cerrar sesión',
+              style: AppTextStyles.linkText.copyWith(color: AppColors.primary),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldLogout != true || !mounted) return;
+
+    setState(() => _isLoggingOut = true);
+    try {
+      await GoogleSignIn().signOut();
+    } catch (_) {
+      // Some sessions are not Google-backed; continue with Firebase sign out.
+    }
+
+    try {
+      await FirebaseAuth.instance.signOut();
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        (route) => false,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('No se pudo cerrar sesión: $e'),
+          backgroundColor: const Color(0xFFB00020),
+        ),
+      );
+      setState(() => _isLoggingOut = false);
+    }
   }
 }
 
@@ -448,6 +509,50 @@ class _ChangeModeButton extends StatelessWidget {
             ),
           ),
           child: Text('¡Quiero ser tutor!', style: AppTextStyles.buttonLabel),
+        ),
+      ),
+    );
+  }
+}
+
+class _LogoutButton extends StatelessWidget {
+  const _LogoutButton({
+    required this.isLoading,
+    required this.onPressed,
+  });
+
+  final bool isLoading;
+  final Future<void> Function() onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+      child: SizedBox(
+        height: 52,
+        child: OutlinedButton(
+          onPressed: isLoading ? null : onPressed,
+          style: OutlinedButton.styleFrom(
+            side: const BorderSide(color: Color(0xFFB00020), width: 1.2),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(30),
+            ),
+          ),
+          child: isLoading
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.4,
+                    color: Color(0xFFB00020),
+                  ),
+                )
+              : Text(
+                  'Cerrar sesión',
+                  style: AppTextStyles.buttonLabel.copyWith(
+                    color: const Color(0xFFB00020),
+                  ),
+                ),
         ),
       ),
     );
