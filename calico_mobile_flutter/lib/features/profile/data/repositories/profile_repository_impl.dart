@@ -115,6 +115,16 @@ class ProfileRepositoryImpl implements ProfileRepository {
     }
   }
 
+  @override
+  Future<bool> hasPendingUpdate(String userId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.containsKey(_pendingKey(userId));
+    } catch (_) {
+      return false;
+    }
+  }
+
   // ── Private helpers ───────────────────────────────────────────────────────
 
   Future<void> _writeCache(String key, Map<String, dynamic> value) async {
