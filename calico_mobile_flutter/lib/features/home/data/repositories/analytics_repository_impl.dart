@@ -3,6 +3,12 @@ import '../../domain/entities/tutor_entity.dart';
 import '../../domain/repositories/analytics_repository.dart';
 import '../models/available_tutor_model.dart';
 
+/// Thin remote client for `/analytics/*` endpoints.
+///
+/// Offline fallback is not the responsibility of this class. `StudentTutoring
+/// RepositoryImpl` wraps `getAvailableTutors` and `getReturningTutor` with the
+/// SQLite cache provided by `AppDatabaseService`, so callers can rely on the
+/// `CachedResult` envelope for both fresh and cached reads.
 class AnalyticsRepositoryImpl implements AnalyticsRepository {
   final ApiClient _apiClient;
 
@@ -20,6 +26,19 @@ class AnalyticsRepositoryImpl implements AnalyticsRepository {
     final raw = data['tutor'];
     if (raw == null) return null;
     return AvailableTutorModel.fromJson(raw as Map<String, dynamic>).toEntity();
+  }
+
+  @override
+  Future<List<TutorEntity>> getAvailableTutors(String courseId) async {
+    final data = await _apiClient.get(
+      '/analytics/bookable-tutors',
+      query: {'course': courseId},
+    );
+    final raw = data['tutors'] as List<dynamic>? ?? [];
+    return raw
+        .whereType<Map<String, dynamic>>()
+        .map((json) => AvailableTutorModel.fromJson(json).toEntity())
+        .toList();
   }
 
   @override
@@ -41,20 +60,7 @@ class AnalyticsRepositoryImpl implements AnalyticsRepository {
         if (countdownMinutes != null) 'countdownMinutes': countdownMinutes,
       });
     } catch (_) {
-      // Fire-and-forget: never let tracking break the UI
+      // Fire-and-forget: never let tracking break the UI.
     }
-  }
-
-  @override
-  Future<List<TutorEntity>> getAvailableTutors(String courseId) async {
-    final data = await _apiClient.get(
-      '/analytics/bookable-tutors',
-      query: {'course': courseId},
-    );
-    final raw = data['tutors'] as List<dynamic>? ?? [];
-    return raw
-        .whereType<Map<String, dynamic>>()
-        .map((json) => AvailableTutorModel.fromJson(json).toEntity())
-        .toList();
   }
 }

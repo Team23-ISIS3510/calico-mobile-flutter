@@ -1,18 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_text_styles.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/widgets/offline_cache_notice.dart';
-import '../../domain/entities/course_entity.dart';
-import '../../domain/entities/session_entity.dart';
-import '../../domain/entities/tutor_entity.dart';
 import '../../data/repositories/analytics_repository_impl.dart';
 import '../../data/repositories/session_repository_impl.dart';
 import '../../data/repositories/student_tutoring_repository_impl.dart';
+import '../../domain/entities/course_entity.dart';
+import '../../domain/entities/session_entity.dart';
+import '../../domain/entities/tutor_entity.dart';
 import '../../domain/repositories/student_tutoring_repository.dart';
-import '../widgets/tutor_carousel_card.dart';
 import '../widgets/booking_bottom_sheet.dart';
+import '../widgets/tutor_carousel_card.dart';
 
 class CourseDetailScreen extends StatefulWidget {
   final CourseEntity course;
@@ -278,7 +279,7 @@ class _TutorSection extends StatelessWidget {
               scrollDirection: Axis.horizontal,
               clipBehavior: Clip.none,
               itemCount: tutors!.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 12),
+              separatorBuilder: (_, _) => const SizedBox(width: 12),
               itemBuilder: (context, i) {
                 final tutor = tutors![i];
                 final alreadyBooked = existingSessions
