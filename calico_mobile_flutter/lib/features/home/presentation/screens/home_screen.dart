@@ -1,29 +1,29 @@
 import 'dart:async';
 
-import 'package:calico_mobile_flutter/features/home/domain/entities/course_entity.dart';
-import 'package:calico_mobile_flutter/features/home/domain/entities/session_entity.dart';
+import 'package:calico_mobile_flutter/features/profile/data/repositories/profile_repository_impl.dart';
+import 'package:calico_mobile_flutter/features/profile/presentation/screens/profile_screen.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_text_styles.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/sync_service.dart';
-import '../../../../core/widgets/app_logo.dart';
+import '../../../../core/utils/context_aware_helper.dart';
 import '../../../../core/widgets/app_bottom_nav.dart';
-import '../../../../core/widgets/section_header.dart';
+import '../../../../core/widgets/app_logo.dart';
 import '../../../../core/widgets/empty_state_view.dart';
+import '../../../../core/widgets/offline_cache_notice.dart';
+import '../../../../core/widgets/section_header.dart';
+import '../../data/repositories/analytics_repository_impl.dart';
 import '../../data/repositories/course_repository_impl.dart';
 import '../../data/repositories/session_repository_impl.dart';
+import '../../data/repositories/student_tutoring_repository_impl.dart';
+import '../controllers/home_controller.dart';
 import '../widgets/course_card.dart';
 import '../widgets/session_card.dart';
-import '../controllers/home_controller.dart';
 import 'course_detail_screen.dart';
 import 'session_detail_screen.dart';
-import 'package:calico_mobile_flutter/features/profile/data/repositories/profile_repository_impl.dart';
-import 'package:calico_mobile_flutter/features/profile/presentation/screens/profile_screen.dart';
-import '../../../../core/utils/context_aware_helper.dart';
-import '../../../../core/services/motion_alert_service.dart';
 
 class HomeScreen extends StatefulWidget {
   /// Firebase UID of the logged-in student. Pass empty string for guest mode.
@@ -38,22 +38,13 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   late final HomeController _controller;
   final _searchController = TextEditingController();
-  final _alertEmailController = TextEditingController();
-  final _studentNameController = TextEditingController();
-  final _locationController = TextEditingController();
   int _selectedTab = 0;
-  late final MotionAlertService _motionAlertService;
-  bool _isAlertMonitoring = false;
-  bool _isSendingAlert = false;
 
-  // ── Stream: connectivity ────────────────────────────────────────────────
-  // A Stream is an asynchronous sequence of events. Unlike a Future (one value),
-  // a Stream emits zero or more values over time. StreamSubscription is the
-  // handle returned by Stream.listen(); it lets us pause, resume, and — most
-  // importantly — cancel the subscription. Canceling in dispose() is mandatory:
-  // if we forget, the callback keeps firing after the widget is gone, causing
-  // memory leaks and "setState called after dispose" crashes.
-  late StreamSubscription<List<ConnectivityResult>> _connectivitySubscription;
+  // StreamSubscription on the connectivity feed. We must cancel it in
+  // dispose(); forgetting to do so keeps the callback (and this State) alive
+  // and causes setState-after-dispose errors.
+  late final StreamSubscription<List<ConnectivityResult>>
+      _connectivitySubscription;
   bool _isOffline = false;
 
   @override
@@ -61,25 +52,21 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
 
     final client = ApiClient();
+    final tutoringRepo = StudentTutoringRepositoryImpl(
+      AnalyticsRepositoryImpl(client),
+      SessionRepositoryImpl(client),
+      client,
+    );
     _controller = HomeController(
       CourseRepositoryImpl(client),
-      SessionRepositoryImpl(client),
+      tutoringRepo,
     );
-    _motionAlertService = MotionAlertService(apiClient: client);
     _controller.addListener(_onUpdate);
-    _studentNameController.text =
-        widget.studentId.isEmpty ? 'Estudiante' : widget.studentId;
 
-    // ── Stream subscription: connectivity ─────────────────────────────────
-    // We subscribe to the connectivity stream instead of polling because the
-    // stream pushes changes to us the moment they happen (event-driven), while
-    // polling would waste CPU and still miss rapid transitions between checks.
     _connectivitySubscription =
-        Connectivity().onConnectivityChanged.listen((results) {
-      final offline = results.isEmpty ||
-          results.every((r) => r == ConnectivityResult.none);
-      if (mounted) setState(() => _isOffline = offline);
+        Connectivity().onConnectivityChanged.listen(_onConnectivityChanged);
 
+<<<<<<< HEAD
       // When coming back online: sync pending SQLite sessions and any pending
       // profile description edit, then refresh the pending-sessions list so
       // the ⏳ badges disappear for rows that were successfully confirmed.
@@ -107,72 +94,47 @@ class _HomeScreenState extends State<HomeScreen> {
     // fails; we get partial data (e.g. courses without sessions) rather than
     // aborting everything on the first error, which is more resilient for a
     // home screen that can display partial state.
+=======
+    // Run all I/O in parallel so total latency equals the slowest call.
+    // eagerError: false lets partial data render instead of aborting on the
+    // first failure, which is the right default for a home feed.
+>>>>>>> 73e141c7967356fa917ebf0339687b87dd1fa25e
     _controller.markLoading();
     Future.wait(
       [
         _controller.loadCourses(widget.studentId),
         _controller.loadSessions(widget.studentId),
         _controller.loadPendingSessions(widget.studentId),
-        _loadLocation(),
       ],
       eagerError: false,
-    )
-        .then((_) {
-          _controller.markSuccess();
-          if (mounted) setState(() {});
-        })
-        .catchError((e) {
-          _controller.markFailure(e.toString());
-          if (mounted) setState(() {});
-        });
+    ).then((_) {
+      if (!mounted) return;
+      _controller.markSuccess();
+    }).catchError((Object e) {
+      if (!mounted) return;
+      _controller.markFailure(e.toString());
+    });
   }
 
-  void _onUpdate() => setState(() {});
-
-  // ── Location placeholder ──────────────────────────────────────────────────
-  // Runs alongside the data fetches inside Future.wait. In a production build
-  // this would call the geolocator or location package asynchronously.
-  // Returning Future.value() immediately so it never delays the other futures.
-  Future<void> _loadLocation() => Future.value();
-
-  String _getContextTitle() {
-    final hour = DateTime.now().hour;
-
-    if (hour < 12) return 'Good morning';
-    if (hour < 18) return 'Good afternoon';
-    return 'Good evening';
+  void _onUpdate() {
+    if (mounted) setState(() {});
   }
 
-  String _getContextMessage() {
-    final hour = DateTime.now().hour;
+  void _onConnectivityChanged(List<ConnectivityResult> results) {
+    final offline =
+        results.isEmpty || results.every((r) => r == ConnectivityResult.none);
+    if (mounted) setState(() => _isOffline = offline);
 
-    if (widget.studentId.isEmpty) {
-      return 'Inicia sesión para ver recomendaciones personalizadas.';
+    // On reconnect: flush pending offline bookings, flush any pending profile
+    // edit, then refresh the controller's pending-session list so ⏳ badges
+    // disappear for rows that were just confirmed by the server.
+    if (!offline && widget.studentId.isNotEmpty) {
+      final client = ApiClient();
+      SyncService(client).syncPendingSessions(widget.studentId).then((_) {
+        if (mounted) _controller.loadPendingSessions(widget.studentId);
+      });
+      ProfileRepositoryImpl(client).syncPendingUpdate(widget.studentId);
     }
-
-    if (hour < 12) {
-      return _controller.sessions.isNotEmpty
-          ? 'Empieza tu día revisando tus próximas sesiones.'
-          : 'Es un buen momento para explorar cursos para hoy.';
-    }
-
-    if (hour < 18) {
-      return _controller.sessions.isNotEmpty
-          ? 'Aún tienes tiempo para prepararte para tu próxima sesión.'
-          : 'Explora cursos y encuentra apoyo para tus clases.';
-    }
-
-    return _controller.sessions.isNotEmpty
-        ? 'Revisa tus sesiones y prepárate para mañana.'
-        : 'Un buen momento para repasar cursos antes de terminar el día.';
-  }
-
-  IconData _getContextIcon() {
-    final hour = DateTime.now().hour;
-
-    if (hour < 12) return Icons.wb_sunny_outlined;
-    if (hour < 18) return Icons.light_mode_outlined;
-    return Icons.nightlight_round;
   }
 
   @override
@@ -180,76 +142,8 @@ class _HomeScreenState extends State<HomeScreen> {
     _controller.removeListener(_onUpdate);
     _controller.dispose();
     _searchController.dispose();
-    _alertEmailController.dispose();
-    _studentNameController.dispose();
-    _locationController.dispose();
-    _motionAlertService.dispose();
-    // Always cancel the StreamSubscription in dispose. The event loop holds a
-    // reference to the callback closure; forgetting to cancel keeps the widget
-    // alive in memory and causes setState-after-dispose errors.
     _connectivitySubscription.cancel();
     super.dispose();
-  }
-
-  Future<void> _toggleMotionMonitoring(bool enabled) async {
-    if (enabled && _alertEmailController.text.trim().isEmpty) {
-      _showSnackBar(
-        'Ingresa el correo de alerta antes de activar el monitoreo.',
-        isError: true,
-      );
-      return;
-    }
-
-    if (enabled) {
-      _motionAlertService.start(onTriggered: _onMotionAlertTriggered);
-      setState(() => _isAlertMonitoring = true);
-      _showSnackBar('Monitoreo de movimiento activado.');
-      return;
-    }
-
-    await _motionAlertService.stop();
-    setState(() => _isAlertMonitoring = false);
-    _showSnackBar('Monitoreo de movimiento detenido.');
-  }
-
-  Future<void> _onMotionAlertTriggered(String reason) async {
-    if (_isSendingAlert) return;
-    setState(() => _isSendingAlert = true);
-
-    try {
-      await _motionAlertService.sendEmergencyEmail(
-        toEmail: _alertEmailController.text.trim(),
-        toName: 'Tutor de guardia',
-        studentName: _studentNameController.text.trim().isEmpty
-            ? 'Estudiante'
-            : _studentNameController.text.trim(),
-        alertReason: reason,
-        location: _locationController.text.trim().isEmpty
-            ? null
-            : _locationController.text.trim(),
-      );
-      if (mounted) {
-        _showSnackBar('Alerta enviada por correo.');
-      }
-    } catch (e) {
-      if (mounted) {
-        _showSnackBar('No se pudo enviar la alerta: $e', isError: true);
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isSendingAlert = false);
-      }
-    }
-  }
-
-  void _showSnackBar(String message, {bool isError = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message, style: GoogleFonts.lexend(fontSize: 14)),
-        backgroundColor: isError ? const Color(0xFFB00020) : Colors.green,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
   }
 
   @override
@@ -264,7 +158,6 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Column(
               children: [
                 _HomeHeader(),
-                // ── Offline banner (Stream result) ──────────────────────
                 if (_isOffline)
                   Container(
                     width: double.infinity,
@@ -290,14 +183,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     hasSessions: _controller.sessions.isNotEmpty,
                   ),
                   icon: ContextAwareHelper.getIcon(),
-                ),
-                _EmergencyAlertCard(
-                  alertEmailController: _alertEmailController,
-                  studentNameController: _studentNameController,
-                  locationController: _locationController,
-                  isMonitoring: _isAlertMonitoring,
-                  isSending: _isSendingAlert,
-                  onToggleMonitoring: _toggleMotionMonitoring,
                 ),
               ],
             ),
@@ -447,9 +332,9 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
 
         // ── Pending sessions (queued offline in SQLite) ───────────────────
-        // These rows have synced = false in the local DB. They are shown with
-        // a ⏳ badge so the student knows they are not yet server-confirmed.
-        // The list refreshes automatically when SyncService marks them synced.
+        // Rows with synced = false. Shown with a ⏳ badge so the student
+        // knows they are not yet server-confirmed. The list refreshes when
+        // SyncService marks them synced after a reconnection.
         if (_controller.pendingSessions.isNotEmpty) ...[
           const SectionHeader('Pending Sync'),
           ..._controller.pendingSessions.map(
@@ -463,6 +348,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
         // ── Confirmed sessions ────────────────────────────────────────────
         const SectionHeader('Upcoming Sessions'),
+        if (_controller.sessionsFromCache)
+          OfflineCacheNotice(
+            lastUpdated: _controller.sessionsLastUpdated,
+          ),
         if (_controller.sessions.isEmpty)
           EmptyStateView(
             widget.studentId.isEmpty
@@ -513,14 +402,12 @@ class _SearchBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      // padding: 12px 16px — matches design spec
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: SizedBox(
         height: 48,
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Left icon panel — beige, left-rounded only
             Container(
               width: 48,
               decoration: const BoxDecoration(
@@ -532,7 +419,6 @@ class _SearchBar extends StatelessWidget {
               ),
               child: const Icon(Icons.search, color: AppColors.brown, size: 24),
             ),
-            // Right text field panel — beige, right-rounded only
             Expanded(
               child: Container(
                 decoration: const BoxDecoration(
@@ -606,289 +492,6 @@ class _ContextAwareBanner extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-class _EmergencyAlertCard extends StatelessWidget {
-  const _EmergencyAlertCard({
-    required this.alertEmailController,
-    required this.studentNameController,
-    required this.locationController,
-    required this.isMonitoring,
-    required this.isSending,
-    required this.onToggleMonitoring,
-  });
-
-  final TextEditingController alertEmailController;
-  final TextEditingController studentNameController;
-  final TextEditingController locationController;
-  final bool isMonitoring;
-  final bool isSending;
-  final ValueChanged<bool> onToggleMonitoring;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.inputBackground),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Alerta por movimiento', style: AppTextStyles.itemTitle),
-            const SizedBox(height: 6),
-            Text(
-              'Si detecta movimientos bruscos repetidos, se envia correo de emergencia.',
-              style: AppTextStyles.itemSubtitle,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: alertEmailController,
-              keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(
-                labelText: 'Correo de alerta',
-                border: OutlineInputBorder(),
-                isDense: true,
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: studentNameController,
-              decoration: const InputDecoration(
-                labelText: 'Nombre del estudiante',
-                border: OutlineInputBorder(),
-                isDense: true,
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: locationController,
-              decoration: const InputDecoration(
-                labelText: 'Ubicacion (opcional)',
-                border: OutlineInputBorder(),
-                isDense: true,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    isMonitoring ? 'Monitoreo activo' : 'Monitoreo inactivo',
-                    style: AppTextStyles.itemSubtitle,
-                  ),
-                ),
-                if (isSending)
-                  const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                const SizedBox(width: 8),
-                Switch(
-                  value: isMonitoring,
-                  onChanged: onToggleMonitoring,
-                  activeThumbColor: AppColors.primary,
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SectionHeader extends StatelessWidget {
-  final String title;
-  const _SectionHeader(this.title);
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      // padding: 20px 16px 12px — matches design spec
-      padding: const EdgeInsets.fromLTRB(16, 20, 16, 12),
-      child: Text(title, style: AppTextStyles.sectionTitle),
-    );
-  }
-}
-
-class _CourseItem extends StatelessWidget {
-  final CourseEntity course;
-  final VoidCallback onTap;
-
-  const _CourseItem({required this.course, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      child: Container(
-        // padding: 8px 16px, minHeight: 72px — matches design spec
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        constraints: const BoxConstraints(minHeight: 72),
-        color: AppColors.background,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            // Left: icon + text
-            Row(
-              children: [
-                // Book icon in beige square
-                Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: AppColors.inputBackground,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(
-                    Icons.menu_book_outlined,
-                    size: 24,
-                    color: AppColors.black,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                // Name + code
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(course.name, style: AppTextStyles.itemTitle),
-                    Text(course.code, style: AppTextStyles.itemSubtitle),
-                  ],
-                ),
-              ],
-            ),
-            // Right: chevron
-            const Icon(Icons.chevron_right, size: 28, color: AppColors.black),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SessionItem extends StatelessWidget {
-  final SessionEntity session;
-  final VoidCallback onTap;
-
-  const _SessionItem({required this.session, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      child: Container(
-        // padding: 12px 16px, minHeight: 90px — matches design spec
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        constraints: const BoxConstraints(minHeight: 90),
-        color: AppColors.background,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            // Left: icon + text
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Calendar icon in orange square — design uses primary color
-                Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: AppColors.primary,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(
-                    Icons.calendar_today,
-                    size: 24,
-                    color: AppColors.black,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                // Date + tutor + course
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(session.formattedDate, style: AppTextStyles.itemTitle),
-                    Text(
-                      session.displayTutor,
-                      style: AppTextStyles.itemSubtitle,
-                    ),
-                    if (session.displayCourse.isNotEmpty)
-                      Text(
-                        session.displayCourse,
-                        style: AppTextStyles.itemSubtitle,
-                      ),
-                  ],
-                ),
-              ],
-            ),
-            // Right: chevron
-            const Icon(Icons.chevron_right, size: 28, color: AppColors.black),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _EmptyState extends StatelessWidget {
-  final String message;
-  const _EmptyState(this.message);
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-      child: Text(message, style: AppTextStyles.itemSubtitle),
-    );
-  }
-}
-
-class _BottomNav extends StatelessWidget {
-  final int selectedIndex;
-  final ValueChanged<int> onTap;
-
-  const _BottomNav({required this.selectedIndex, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return BottomNavigationBar(
-      currentIndex: selectedIndex,
-      onTap: onTap,
-      backgroundColor: Colors.white,
-      selectedItemColor: AppColors.primary,
-      unselectedItemColor: AppColors.brown,
-      type: BottomNavigationBarType.fixed,
-      selectedLabelStyle: GoogleFonts.lexend(
-        fontSize: 12,
-        fontWeight: FontWeight.w500,
-      ),
-      unselectedLabelStyle: GoogleFonts.lexend(
-        fontSize: 12,
-        fontWeight: FontWeight.w400,
-      ),
-      items: const [
-        BottomNavigationBarItem(
-          icon: Icon(Icons.home_outlined),
-          activeIcon: Icon(Icons.home),
-          label: 'Home',
-        ),
-        BottomNavigationBarItem(
-          icon: Icon(Icons.person_outline),
-          activeIcon: Icon(Icons.person),
-          label: 'Profile',
-        ),
-      ],
     );
   }
 }

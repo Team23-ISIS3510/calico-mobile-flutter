@@ -38,13 +38,17 @@ dependencies:
   google_fonts: ^6.2.1
   url_launcher: ^6.3.0
   sensors_plus: ^7.0.0
+  # Connectivity stream — used to trigger sync and show the offline banner.
   connectivity_plus: ^6.0.0
-  # SharedPreferences — lightweight key-value store for profile cache
-  shared_preferences: ^2.3.3
-  # Hive — fast embedded NoSQL box for recommended tutors cache
+  # SharedPreferences — lightweight key-value store for profile + alert prefs.
+  shared_preferences: ^2.5.3
+  # sqflite — raw SQLite cache for go-to tutor and upcoming sessions.
+  sqflite: ^2.3.3+1
+  # Hive — fast key/value store for the "Top Rated & Available Soon" carousel
+  # (one JSON blob per courseId).
   hive: ^2.2.3
   hive_flutter: ^1.1.0
-  # Drift (SQLite ORM) — structured pending-sessions queue with typed queries
+  # Drift (SQLite ORM) — structured pending-sessions queue with typed queries.
   drift: ^2.22.1
   sqlite3_flutter_libs: ^0.5.0
   path_provider: ^2.1.5

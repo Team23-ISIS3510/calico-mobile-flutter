@@ -1,19 +1,16 @@
-import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+
 import 'app.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // ── Hive: initialise before any box is opened ───────────────────────────
-  // hive_flutter calls Hive.init() with the app's documents directory so
-  // box data survives app restarts.  We open the 'recommended_tutors' box
-  // here at startup (typed as String — each value is a JSON blob) so
-  // AnalyticsRepositoryImpl can call Hive.box() synchronously later without
-  // needing an async box-open at call time.
+  // Hive.initFlutter() must run before any Hive box is opened. The actual box
+  // ('available_tutors_cache') is opened lazily the first time the cache is
+  // read or written — see AvailableTutorsHiveCache.
   await Hive.initFlutter();
-  await Hive.openBox<String>('recommended_tutors');
 
   try {
     await Firebase.initializeApp(

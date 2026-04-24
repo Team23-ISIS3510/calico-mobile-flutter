@@ -1,29 +1,32 @@
 import 'package:flutter/foundation.dart';
+
+import '../../../../core/local/pending_sessions_database.dart';
+import '../../../../core/utils/course_filter_isolate.dart';
 import '../../domain/entities/course_entity.dart';
 import '../../domain/entities/session_entity.dart';
 import '../../domain/repositories/course_repository.dart';
-import '../../domain/repositories/session_repository.dart';
-import '../../../../core/local/pending_sessions_database.dart';
-import '../../../../core/utils/course_filter_isolate.dart';
+import '../../domain/repositories/student_tutoring_repository.dart';
 
 enum HomeStatus { idle, loading, success, failure }
 
 /// Manages courses, sessions, and search state for the Home screen.
 ///
-/// Data is loaded concurrently via [loadCourses] and [loadSessions], which are
-/// designed to be called together inside a [Future.wait] in the screen's
-/// [initState]. Status transitions ([markLoading], [markSuccess], [markFailure])
-/// are driven by the screen so the screen controls the concurrency strategy.
+/// Data is loaded concurrently via [loadCourses] and [loadSessions], designed
+/// to be called together inside a [Future.wait] in the screen's [initState].
+/// Status transitions ([markLoading], [markSuccess], [markFailure]) are driven
+/// by the screen so the screen controls the concurrency strategy.
 class HomeController extends ChangeNotifier {
   final CourseRepository _courseRepo;
-  final SessionRepository _sessionRepo;
+  final StudentTutoringRepository _tutoringRepo;
 
-  HomeController(this._courseRepo, this._sessionRepo);
+  HomeController(this._courseRepo, this._tutoringRepo);
 
   HomeStatus _status = HomeStatus.idle;
   List<CourseEntity> _allCourses = [];
   List<CourseEntity> _filteredCourses = [];
   List<SessionEntity> _sessions = [];
+  bool _sessionsFromCache = false;
+  DateTime? _sessionsLastUpdated;
   // Sessions queued in SQLite while offline — shown with a ⏳ badge.
   List<SessionEntity> _pendingSessions = [];
   String? _error;
@@ -34,11 +37,13 @@ class HomeController extends ChangeNotifier {
   HomeStatus get status => _status;
   List<CourseEntity> get courses => _filteredCourses;
   List<SessionEntity> get sessions => _sessions;
+  bool get sessionsFromCache => _sessionsFromCache;
+  DateTime? get sessionsLastUpdated => _sessionsLastUpdated;
   List<SessionEntity> get pendingSessions => _pendingSessions;
   String? get error => _error;
   bool get isLoading => _status == HomeStatus.loading;
 
-  /// Top 3 courses the student has had the most tutoring sessions in.
+  /// Top 3 courses the student has had the most sessions in.
   List<CourseEntity> get recommendedCourses {
     if (_sessions.isEmpty || _allCourses.isEmpty) return [];
     final counts = <String, int>{};
@@ -59,20 +64,17 @@ class HomeController extends ChangeNotifier {
 
   // ── Status helpers ────────────────────────────────────────────────────────
 
-  /// Transitions to the loading state. Call before starting parallel fetches.
   void markLoading() {
     _status = HomeStatus.loading;
     _error = null;
     notifyListeners();
   }
 
-  /// Transitions to success once all parallel fetches have completed.
   void markSuccess() {
     _status = HomeStatus.success;
     notifyListeners();
   }
 
-  /// Transitions to failure and stores an error message.
   void markFailure(String errorMessage) {
     _error = errorMessage;
     _status = HomeStatus.failure;
@@ -86,35 +88,24 @@ class HomeController extends ChangeNotifier {
   /// Designed to run concurrently alongside [loadSessions] inside a
   /// [Future.wait] call. Does not touch [status] — the caller controls
   /// status transitions via [markLoading] / [markSuccess] / [markFailure].
-
   Future<void> loadCourses(String studentId) async {
-    debugPrint('loadCourses START ${DateTime.now()}');
     _allCourses = await _courseRepo.getCourses();
     _filteredCourses = List.from(_allCourses);
-    debugPrint('loadCourses END ${DateTime.now()}');
   }
 
-  /// Fetches upcoming sessions for [studentId], sorted by start time.
-  ///
-  /// Designed to run concurrently alongside [loadCourses] inside a
-  /// [Future.wait] call. Past sessions are discarded at load time.
+  /// Fetches upcoming sessions for [studentId], via the StudentTutoring
+  /// repository (remote → SQLite cache fallback). Exposes `sessionsFromCache`
+  /// and `sessionsLastUpdated` so the screen can render the offline notice.
   Future<void> loadSessions(String studentId) async {
-    debugPrint('loadSessions START ${DateTime.now()}');
-    final raw = await _sessionRepo.getStudentSessions(studentId);
-    final now = DateTime.now();
-    _sessions =
-        raw
-            .where(
-              (s) => s.startDateTime != null && s.startDateTime!.isAfter(now),
-            )
-            .toList()
-          ..sort((a, b) => a.startDateTime!.compareTo(b.startDateTime!));
-    debugPrint('loadSessions END ${DateTime.now()}');
+    final result = await _tutoringRepo.getUpcomingSessions(studentId);
+    _sessions = result.data;
+    _sessionsFromCache = result.isFromCache;
+    _sessionsLastUpdated = result.lastUpdated;
   }
 
-  /// Reads all unsynced rows from the local SQLite pending_sessions table and
+  /// Reads all unsynced rows from the local pending_sessions table and
   /// exposes them as [SessionEntity] objects so the home screen can render
-  /// them alongside confirmed sessions with a ⏳ Pending sync badge.
+  /// them alongside confirmed sessions with a ⏳ badge.
   ///
   /// Uses status = 'pending_local' as a sentinel so [SessionCard] can detect
   /// and badge these rows without any extra field on [SessionEntity].
@@ -148,15 +139,17 @@ class HomeController extends ChangeNotifier {
 
   // ── Convenience loader (used by the retry button) ─────────────────────────
 
-  /// Loads both courses and sessions in parallel, managing status internally.
-  ///
-  /// Wraps [loadCourses] and [loadSessions] with [Future.wait] so both network
-  /// calls overlap on the event loop. The retry button in the UI calls this
-  /// directly instead of rebuilding the whole [Future.wait] chain.
+  /// Loads courses, sessions, and pending sessions in parallel, managing
+  /// status internally. Wraps the three loaders with [Future.wait] so their
+  /// I/O overlaps on the event loop.
   Future<void> loadData(String studentId) async {
     markLoading();
     try {
-      await Future.wait([loadCourses(studentId), loadSessions(studentId)]);
+      await Future.wait([
+        loadCourses(studentId),
+        loadSessions(studentId),
+        loadPendingSessions(studentId),
+      ]);
       markSuccess();
     } on Exception catch (e) {
       markFailure(e.toString());
@@ -165,12 +158,10 @@ class HomeController extends ChangeNotifier {
 
   // ── Search ────────────────────────────────────────────────────────────────
 
-  /// Filters courses by [query] in a background Isolate via [filterCoursesInIsolate].
-  ///
-  /// Fires a new Isolate computation on every keystroke. Stale results are
-  /// discarded by comparing [query] against [_lastSearchQuery] when the
-  /// future resolves — only the most recent query updates the UI. This
-  /// prevents out-of-order results when the user types quickly.
+  /// Filters courses by [query] in a background Isolate via
+  /// [filterCoursesInIsolate]. Stale results are discarded by comparing
+  /// [query] against [_lastSearchQuery] when the future resolves so
+  /// out-of-order results never clobber the UI when the user types quickly.
   void search(String query) {
     _lastSearchQuery = query;
     filterCoursesInIsolate(_allCourses, query).then((filtered) {

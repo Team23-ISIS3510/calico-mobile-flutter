@@ -27,4 +27,15 @@ class UserProfile {
       isTutor: json['isTutor'] ?? false,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'email': email,
+      'description': description,
+      'courses': courses,
+      'isTutor': isTutor,
+    };
+  }
 }

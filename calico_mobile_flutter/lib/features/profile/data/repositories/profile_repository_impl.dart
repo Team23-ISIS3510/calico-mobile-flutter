@@ -1,16 +1,14 @@
-// WHY SHAREDPREFERENCES?
-// The user profile is a single JSON document keyed by userId.
-// SharedPreferences is the right fit because:
-//   - Data is small (< 1 KB) — no need for a full relational database
-//   - Key-value access is O(1); no query language needed
-//   - Built-in platform storage (NSUserDefaults on iOS, SharedPreferences on Android)
+// SharedPreferences fits the profile cache because:
+//   - The profile is a single JSON document < 1 KB per user.
+//   - Key-value access is O(1); no query language needed.
+//   - Built-in platform storage (NSUserDefaults / SharedPreferences).
 //
-// TRADE-OFF: not encrypted, so avoid storing auth tokens here.
-// Acceptable for non-sensitive profile fields (name, description, email).
+// Trade-off: not encrypted. Do not store auth tokens here — only
+// non-sensitive profile fields.
 //
-// TWO KEYS PER USER:
-//   cached_profile_<userId>         — last successful GET response (JSON)
-//   pending_profile_update_<userId> — description edit saved while offline
+// Two keys per user:
+//   cached_profile_<userId>         — last successful GET response (JSON).
+//   pending_profile_update_<userId> — description edit saved while offline.
 
 import 'dart:convert';
 
@@ -31,31 +29,25 @@ class ProfileRepositoryImpl implements ProfileRepository {
   @override
   bool get lastLoadFromCache => _lastLoadFromCache;
 
-  // ── Key helpers ───────────────────────────────────────────────────────────
-
   static String _cacheKey(String userId) => 'cached_profile_$userId';
   static String _pendingKey(String userId) => 'pending_profile_update_$userId';
-
-  // ── Repository interface ──────────────────────────────────────────────────
 
   @override
   Future<UserProfile> getProfile(String userId) async {
     try {
       final data = await _apiClient.get('/users/$userId');
       final profile = UserProfile.fromJson(data);
-      // Persist the fresh response so we can serve it offline next time.
       await _writeCache(_cacheKey(userId), data);
       _lastLoadFromCache = false;
       return profile;
     } catch (_) {
-      // API call failed (offline / timeout / 5xx) — fall back to cache.
       final cached = await _readCache(_cacheKey(userId));
       if (cached != null) {
         _lastLoadFromCache = true;
         return UserProfile.fromJson(cached);
       }
       _lastLoadFromCache = false;
-      rethrow; // No cache available — surface the error to the UI.
+      rethrow;
     }
   }
 
@@ -69,11 +61,11 @@ class ProfileRepositoryImpl implements ProfileRepository {
     final isOnline = results.any((r) => r != ConnectivityResult.none);
 
     if (!isOnline) {
-      // Save the pending edit so syncPendingUpdate can POST it later.
       if (description != null) await _writePendingUpdate(userId, description);
 
-      // Return an optimistic profile: cache + new description so the UI
-      // reflects the change immediately without waiting for connectivity.
+      // Optimistic UI: merge the pending edit onto the cached profile so the
+      // screen reflects the change immediately. syncPendingUpdate will flush
+      // the real PATCH once the device reconnects.
       final cached = await _readCache(_cacheKey(userId));
       if (cached != null) {
         final patched = Map<String, dynamic>.from(cached);
@@ -83,7 +75,6 @@ class ProfileRepositoryImpl implements ProfileRepository {
       throw Exception('Profile update saved locally — will sync when online.');
     }
 
-    // Online path — PATCH and re-cache the server response.
     final data = await _apiClient.patch(
       '/users/$userId',
       body: {
@@ -96,7 +87,6 @@ class ProfileRepositoryImpl implements ProfileRepository {
     return profile;
   }
 
-  /// Sends any pending offline description edit to the server, then clears it.
   @override
   Future<void> syncPendingUpdate(String userId) async {
     try {
@@ -114,11 +104,9 @@ class ProfileRepositoryImpl implements ProfileRepository {
       );
       await prefs.remove(_pendingKey(userId));
     } catch (_) {
-      // Sync failed — leave the key in place; retry on next connectivity event.
+      // Leave the pending key in place — retry on next connectivity event.
     }
   }
-
-  // ── Private helpers ───────────────────────────────────────────────────────
 
   Future<void> _writeCache(String key, Map<String, dynamic> value) async {
     try {
@@ -140,16 +128,15 @@ class ProfileRepositoryImpl implements ProfileRepository {
     }
   }
 
-  Future<void> _writePendingUpdate(
-    String userId,
-    String description,
-  ) async {
+  Future<void> _writePendingUpdate(String userId, String description) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(
         _pendingKey(userId),
         jsonEncode({'description': description}),
       );
-    } catch (_) {}
+    } catch (_) {
+      // Best-effort.
+    }
   }
 }
