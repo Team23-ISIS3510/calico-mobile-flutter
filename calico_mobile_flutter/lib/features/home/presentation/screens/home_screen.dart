@@ -7,6 +7,7 @@ import '../../../../core/widgets/app_logo.dart';
 import '../../../../core/widgets/app_bottom_nav.dart';
 import '../../../../core/widgets/section_header.dart';
 import '../../../../core/widgets/empty_state_view.dart';
+import '../../../../core/widgets/offline_cache_notice.dart';
 import '../../data/repositories/analytics_repository_impl.dart';
 import '../../data/repositories/course_repository_impl.dart';
 import '../../data/repositories/session_repository_impl.dart';
@@ -234,6 +235,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
         // ── Sessions ─────────────────────────────────────────────────────
         const SectionHeader('Upcoming Sessions'),
+        if (_controller.sessionsFromCache)
+          OfflineCacheNotice(
+            lastUpdated: _controller.sessionsLastUpdated,
+          ),
         if (_controller.sessions.isEmpty)
           EmptyStateView(
             widget.studentId.isEmpty

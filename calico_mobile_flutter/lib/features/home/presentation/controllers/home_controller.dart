@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import '../../../../core/storage/cached_result.dart';
 import '../../domain/entities/course_entity.dart';
 import '../../domain/entities/session_entity.dart';
 import '../../domain/repositories/course_repository.dart';
@@ -17,11 +18,15 @@ class HomeController extends ChangeNotifier {
   List<CourseEntity> _allCourses = [];
   List<CourseEntity> _filteredCourses = [];
   List<SessionEntity> _sessions = [];
+  bool _sessionsFromCache = false;
+  DateTime? _sessionsLastUpdated;
   String? _error;
 
   HomeStatus get status => _status;
   List<CourseEntity> get courses => _filteredCourses;
   List<SessionEntity> get sessions => _sessions;
+  bool get sessionsFromCache => _sessionsFromCache;
+  DateTime? get sessionsLastUpdated => _sessionsLastUpdated;
   String? get error => _error;
   bool get isLoading => _status == HomeStatus.loading;
 
@@ -56,7 +61,11 @@ class HomeController extends ChangeNotifier {
       ]).timeout(const Duration(seconds: 20));
 
       _allCourses = results[0] as List<CourseEntity>;
-      _sessions = results[1] as List<SessionEntity>;
+      final sessionsResult =
+          results[1] as CachedResult<List<SessionEntity>>;
+      _sessions = sessionsResult.data;
+      _sessionsFromCache = sessionsResult.isFromCache;
+      _sessionsLastUpdated = sessionsResult.lastUpdated;
       _filteredCourses = List.from(_allCourses);
       _status = HomeStatus.success;
     } catch (e) {
