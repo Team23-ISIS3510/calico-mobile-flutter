@@ -46,19 +46,20 @@ class HomeController extends ChangeNotifier {
 
   Future<void> loadData(String studentId) async {
     _status = HomeStatus.loading;
+    _error = null;
     notifyListeners();
 
     try {
       final results = await Future.wait([
         _courseRepo.getCourses(),
         _tutoringRepo.getUpcomingSessions(studentId),
-      ]);
+      ]).timeout(const Duration(seconds: 20));
 
       _allCourses = results[0] as List<CourseEntity>;
       _sessions = results[1] as List<SessionEntity>;
       _filteredCourses = List.from(_allCourses);
       _status = HomeStatus.success;
-    } on Exception catch (e) {
+    } catch (e) {
       _error = e.toString();
       _status = HomeStatus.failure;
     }
