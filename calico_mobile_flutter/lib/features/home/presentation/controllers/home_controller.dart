@@ -3,6 +3,7 @@ import '../../domain/entities/course_entity.dart';
 import '../../domain/entities/session_entity.dart';
 import '../../domain/repositories/course_repository.dart';
 import '../../domain/repositories/session_repository.dart';
+import '../../../../core/local/pending_sessions_database.dart';
 import '../../../../core/utils/course_filter_isolate.dart';
 
 enum HomeStatus { idle, loading, success, failure }
@@ -23,6 +24,8 @@ class HomeController extends ChangeNotifier {
   List<CourseEntity> _allCourses = [];
   List<CourseEntity> _filteredCourses = [];
   List<SessionEntity> _sessions = [];
+  // Sessions queued in SQLite while offline — shown with a ⏳ badge.
+  List<SessionEntity> _pendingSessions = [];
   String? _error;
 
   // Tracks the most recent search query to discard stale isolate results.
@@ -31,6 +34,7 @@ class HomeController extends ChangeNotifier {
   HomeStatus get status => _status;
   List<CourseEntity> get courses => _filteredCourses;
   List<SessionEntity> get sessions => _sessions;
+  List<SessionEntity> get pendingSessions => _pendingSessions;
   String? get error => _error;
   bool get isLoading => _status == HomeStatus.loading;
 
@@ -106,6 +110,40 @@ class HomeController extends ChangeNotifier {
             .toList()
           ..sort((a, b) => a.startDateTime!.compareTo(b.startDateTime!));
     debugPrint('loadSessions END ${DateTime.now()}');
+  }
+
+  /// Reads all unsynced rows from the local SQLite pending_sessions table and
+  /// exposes them as [SessionEntity] objects so the home screen can render
+  /// them alongside confirmed sessions with a ⏳ Pending sync badge.
+  ///
+  /// Uses status = 'pending_local' as a sentinel so [SessionCard] can detect
+  /// and badge these rows without any extra field on [SessionEntity].
+  Future<void> loadPendingSessions(String studentId) async {
+    try {
+      final rows =
+          await PendingSessionsDatabase.instance.getUnsynced(studentId);
+      _pendingSessions = rows
+          .map(
+            (r) => SessionEntity(
+              id: 'pending_${r.id}',
+              tutorId: r.tutorId,
+              studentId: r.studentId,
+              startDateTime: DateTime.tryParse(r.scheduledStart),
+              endDateTime: DateTime.tryParse(r.scheduledEnd),
+              courseId: r.courseId,
+              tutorName: r.tutorName,
+              status: 'pending_local',
+            ),
+          )
+          .toList()
+        ..sort(
+          (a, b) => (a.startDateTime ?? DateTime.now())
+              .compareTo(b.startDateTime ?? DateTime.now()),
+        );
+    } catch (_) {
+      _pendingSessions = [];
+    }
+    notifyListeners();
   }
 
   // ── Convenience loader (used by the retry button) ─────────────────────────

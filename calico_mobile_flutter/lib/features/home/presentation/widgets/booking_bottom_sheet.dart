@@ -1,7 +1,10 @@
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_text_styles.dart';
+import '../../../../core/local/pending_sessions_database.dart';
 import '../../../../core/network/api_client.dart';
 import '../../domain/entities/tutor_entity.dart';
 
@@ -28,6 +31,8 @@ class BookingBottomSheet extends StatefulWidget {
 class _BookingBottomSheetState extends State<BookingBottomSheet> {
   bool _isLoading = false;
   bool _booked = false;
+  // True when the booking was queued in SQLite because the device was offline.
+  bool _savedOffline = false;
   String? _error;
 
   String _formatSlot() {
@@ -66,6 +71,51 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
       _error = null;
     });
 
+    // ── Offline check: queue in SQLite instead of hitting the API ────────
+    // WHY SQLITE HERE?
+    // A missed booking while offline is a high-friction failure — the user
+    // tapped Book Now with intent.  We persist the full booking payload to
+    // the pending_sessions table so SyncService can POST it the moment the
+    // device comes back online, without requiring the user to repeat the
+    // action.  SQLite is the right store because:
+    //   - Each row has an independent lifecycle (pending → synced)
+    //   - Typed columns prevent data corruption between save and sync
+    //   - Supports filtered queries (WHERE synced = false) at sync time
+    final connectivity = await Connectivity().checkConnectivity();
+    final isOnline = connectivity.any((r) => r != ConnectivityResult.none);
+
+    if (!isOnline) {
+      try {
+        final db = PendingSessionsDatabase.instance;
+        await db.into(db.pendingSessions).insert(
+          PendingSessionsCompanion.insert(
+            tutorId: widget.tutor.id,
+            studentId: widget.studentId,
+            courseId: widget.courseId,
+            scheduledStart: widget.tutor.nextSlotStart!.toIso8601String(),
+            scheduledEnd: widget.tutor.nextSlotEnd!.toIso8601String(),
+            location: widget.tutor.location,
+            bookingSource: widget.bookingSource,
+            createdAt: DateTime.now(),
+            tutorName: Value(widget.tutor.name),
+            parentAvailabilityId: Value(widget.tutor.parentAvailabilityId),
+            nextSlotIndex: Value(widget.tutor.nextSlotIndex),
+          ),
+        );
+        setState(() {
+          _isLoading = false;
+          _savedOffline = true;
+        });
+      } catch (e) {
+        setState(() {
+          _isLoading = false;
+          _error = 'Could not save booking: $e';
+        });
+      }
+      return;
+    }
+
+    // ── Online path: POST directly to the server ─────────────────────────
     try {
       final client = ApiClient();
       await client.post(
@@ -79,9 +129,7 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
           'location': widget.tutor.location,
           'requiresApproval': false,
           'bookingSource': widget.bookingSource,
-
           'tutorName': widget.tutor.name,
-
           if (widget.tutor.parentAvailabilityId != null)
             'parentAvailabilityId': widget.tutor.parentAvailabilityId,
           if (widget.tutor.nextSlotIndex != null)
@@ -126,7 +174,35 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
           ),
           const SizedBox(height: 20),
 
-          if (_booked) ...[
+          if (_savedOffline) ...[
+            const Icon(Icons.schedule, color: Colors.orange, size: 64),
+            const SizedBox(height: 12),
+            Text(
+              'Session saved — will be booked when online',
+              textAlign: TextAlign.center,
+              style: AppTextStyles.sectionTitle,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Your booking with ${widget.tutor.name} has been queued locally '
+              'and will be confirmed automatically once you reconnect.',
+              textAlign: TextAlign.center,
+              style: AppTextStyles.itemSubtitle,
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, false),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                minimumSize: const Size(double.infinity, 48),
+              ),
+              child: Text('Done', style: AppTextStyles.buttonLabel),
+            ),
+          ] else if (_booked) ...[
             const Icon(Icons.check_circle, color: Colors.green, size: 64),
             const SizedBox(height: 12),
             Text(

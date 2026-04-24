@@ -8,17 +8,19 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_text_styles.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/services/sync_service.dart';
 import '../../../../core/widgets/app_logo.dart';
 import '../../../../core/widgets/app_bottom_nav.dart';
 import '../../../../core/widgets/section_header.dart';
 import '../../../../core/widgets/empty_state_view.dart';
 import '../../data/repositories/course_repository_impl.dart';
+import '../../data/repositories/session_repository_impl.dart';
 import '../widgets/course_card.dart';
 import '../widgets/session_card.dart';
-import '../../data/repositories/session_repository_impl.dart';
 import '../controllers/home_controller.dart';
 import 'course_detail_screen.dart';
 import 'session_detail_screen.dart';
+import 'package:calico_mobile_flutter/features/profile/data/repositories/profile_repository_impl.dart';
 import 'package:calico_mobile_flutter/features/profile/presentation/screens/profile_screen.dart';
 import '../../../../core/utils/context_aware_helper.dart';
 import '../../../../core/services/motion_alert_service.dart';
@@ -76,8 +78,18 @@ class _HomeScreenState extends State<HomeScreen> {
         Connectivity().onConnectivityChanged.listen((results) {
       final offline = results.isEmpty ||
           results.every((r) => r == ConnectivityResult.none);
-      // setState triggers a rebuild so the offline banner appears/disappears.
       if (mounted) setState(() => _isOffline = offline);
+
+      // When coming back online: sync pending SQLite sessions and any pending
+      // profile description edit, then refresh the pending-sessions list so
+      // the ⏳ badges disappear for rows that were successfully confirmed.
+      if (!offline && widget.studentId.isNotEmpty) {
+        final client = ApiClient();
+        SyncService(client).syncPendingSessions(widget.studentId).then((_) {
+          if (mounted) _controller.loadPendingSessions(widget.studentId);
+        });
+        ProfileRepositoryImpl(client).syncPendingUpdate(widget.studentId);
+      }
     });
 
     // ── Future.wait: parallel data loading ───────────────────────────────
@@ -96,6 +108,7 @@ class _HomeScreenState extends State<HomeScreen> {
       [
         _controller.loadCourses(widget.studentId),
         _controller.loadSessions(widget.studentId),
+        _controller.loadPendingSessions(widget.studentId),
         _loadLocation(),
       ],
       eagerError: false,
@@ -429,7 +442,22 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
 
-        // ── Sessions ─────────────────────────────────────────────────────
+        // ── Pending sessions (queued offline in SQLite) ───────────────────
+        // These rows have synced = false in the local DB. They are shown with
+        // a ⏳ badge so the student knows they are not yet server-confirmed.
+        // The list refreshes automatically when SyncService marks them synced.
+        if (_controller.pendingSessions.isNotEmpty) ...[
+          const SectionHeader('Pending Sync'),
+          ..._controller.pendingSessions.map(
+            (s) => SessionCard(
+              session: s,
+              showPendingBadge: true,
+              onTap: () {},
+            ),
+          ),
+        ],
+
+        // ── Confirmed sessions ────────────────────────────────────────────
         const SectionHeader('Upcoming Sessions'),
         if (_controller.sessions.isEmpty)
           EmptyStateView(

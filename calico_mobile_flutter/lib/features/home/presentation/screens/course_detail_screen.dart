@@ -1,3 +1,4 @@
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/constants/app_colors.dart';
@@ -32,6 +33,8 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
   bool _goToTutorLoaded = false;
   TutorEntity? _goToTutor;
   late final AnalyticsRepository _repo;
+  // True when the tutor list was served from the Hive cache (device offline).
+  bool _tutorsFromCache = false;
 
   @override
   void initState() {
@@ -42,10 +45,19 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
   }
 
   Future<void> _loadTutors(AnalyticsRepository repo) async {
+    // Check connectivity before the fetch so we know whether any data
+    // that comes back must have been served from the Hive cache.
+    final results = await Connectivity().checkConnectivity();
+    final isOnline = results.any((r) => r != ConnectivityResult.none);
+
     try {
       final tutors = await repo.getAvailableTutors(widget.course.id);
       if (mounted) {
-        setState(() => _tutors = tutors);
+        setState(() {
+          _tutors = tutors;
+          // If we were offline but still got tutors, they came from Hive.
+          _tutorsFromCache = !isOnline && tutors.isNotEmpty;
+        });
         repo.trackCarouselEvent(
           'results_shown',
           widget.course.id,
@@ -136,6 +148,7 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
               const SizedBox(height: 28),
               _TutorSection(
                 tutors: _tutors,
+                fromCache: _tutorsFromCache,
                 studentId: widget.studentId,
                 courseId: widget.course.id,
                 existingSessions: widget.existingSessions,
@@ -177,6 +190,8 @@ class _TutorSection extends StatelessWidget {
   final List<SessionEntity> existingSessions;
   final void Function(TutorEntity tutor)? onTutorTapped;
   final void Function(TutorEntity tutor)? onTutorBooked;
+  // True when tutors were served from the Hive cache (device offline).
+  final bool fromCache;
 
   const _TutorSection({
     required this.tutors,
@@ -185,6 +200,7 @@ class _TutorSection extends StatelessWidget {
     required this.existingSessions,
     this.onTutorTapped,
     this.onTutorBooked,
+    this.fromCache = false,
   });
 
   @override
@@ -223,6 +239,22 @@ class _TutorSection extends StatelessWidget {
           'Available in the next 4 hours for this course',
           style: AppTextStyles.itemSubtitle,
         ),
+        // Shown when Hive returned expired/fallback data because we are offline.
+        if (fromCache) ...[
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Icon(Icons.cloud_off, size: 13, color: Colors.orange.shade600),
+              const SizedBox(width: 4),
+              Text(
+                'Showing cached tutors',
+                style: AppTextStyles.itemSubtitle.copyWith(
+                  color: Colors.orange.shade600,
+                ),
+              ),
+            ],
+          ),
+        ],
         const SizedBox(height: 14),
         if (tutors == null)
           const SizedBox(
