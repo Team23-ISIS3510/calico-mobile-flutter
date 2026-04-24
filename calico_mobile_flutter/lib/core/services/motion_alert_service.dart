@@ -8,10 +8,10 @@ import '../network/api_client.dart';
 class MotionAlertService {
   MotionAlertService({
     required ApiClient apiClient,
-    this.threshold = 22.0,
-    this.minHitsInWindow = 8,
+    this.threshold = 18.0,
+    this.minHitsInWindow = 5,
     this.window = const Duration(seconds: 30),
-    this.cooldown = const Duration(minutes: 5),
+    this.cooldown = const Duration(minutes: 1),
   }) : _apiClient = apiClient;
 
   final ApiClient _apiClient;
