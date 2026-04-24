@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:calico_mobile_flutter/features/home/domain/entities/course_entity.dart';
 import 'package:calico_mobile_flutter/features/home/domain/entities/session_entity.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/constants/app_colors.dart';
@@ -41,9 +44,20 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isAlertMonitoring = false;
   bool _isSendingAlert = false;
 
+  // ── Stream: connectivity ────────────────────────────────────────────────
+  // A Stream is an asynchronous sequence of events. Unlike a Future (one value),
+  // a Stream emits zero or more values over time. StreamSubscription is the
+  // handle returned by Stream.listen(); it lets us pause, resume, and — most
+  // importantly — cancel the subscription. Canceling in dispose() is mandatory:
+  // if we forget, the callback keeps firing after the widget is gone, causing
+  // memory leaks and "setState called after dispose" crashes.
+  late StreamSubscription<List<ConnectivityResult>> _connectivitySubscription;
+  bool _isOffline = false;
+
   @override
   void initState() {
     super.initState();
+
     final client = ApiClient();
     _controller = HomeController(
       CourseRepositoryImpl(client),
@@ -51,13 +65,58 @@ class _HomeScreenState extends State<HomeScreen> {
     );
     _motionAlertService = MotionAlertService(apiClient: client);
     _controller.addListener(_onUpdate);
-    _controller.loadData(widget.studentId);
-    _studentNameController.text = widget.studentId.isEmpty
-        ? 'Estudiante'
-        : widget.studentId;
+    _studentNameController.text =
+        widget.studentId.isEmpty ? 'Estudiante' : widget.studentId;
+
+    // ── Stream subscription: connectivity ─────────────────────────────────
+    // We subscribe to the connectivity stream instead of polling because the
+    // stream pushes changes to us the moment they happen (event-driven), while
+    // polling would waste CPU and still miss rapid transitions between checks.
+    _connectivitySubscription =
+        Connectivity().onConnectivityChanged.listen((results) {
+      final offline = results.isEmpty ||
+          results.every((r) => r == ConnectivityResult.none);
+      // setState triggers a rebuild so the offline banner appears/disappears.
+      if (mounted) setState(() => _isOffline = offline);
+    });
+
+    // ── Future.wait: parallel data loading ───────────────────────────────
+    // Flutter runs on a single-threaded event loop (one Isolate). Async
+    // functions do NOT create OS threads; they schedule continuations on the
+    // event queue. Future.wait submits all three futures to the queue at once,
+    // so their I/O wait times overlap — total latency equals the slowest call
+    // rather than the sum of all calls.
+    //
+    // eagerError: false means every future runs to completion even if one
+    // fails; we get partial data (e.g. courses without sessions) rather than
+    // aborting everything on the first error, which is more resilient for a
+    // home screen that can display partial state.
+    _controller.markLoading();
+    Future.wait(
+      [
+        _controller.loadCourses(widget.studentId),
+        _controller.loadSessions(widget.studentId),
+        _loadLocation(),
+      ],
+      eagerError: false,
+    )
+        .then((_) {
+          _controller.markSuccess();
+          if (mounted) setState(() {});
+        })
+        .catchError((e) {
+          _controller.markFailure(e.toString());
+          if (mounted) setState(() {});
+        });
   }
 
   void _onUpdate() => setState(() {});
+
+  // ── Location placeholder ──────────────────────────────────────────────────
+  // Runs alongside the data fetches inside Future.wait. In a production build
+  // this would call the geolocator or location package asynchronously.
+  // Returning Future.value() immediately so it never delays the other futures.
+  Future<void> _loadLocation() => Future.value();
 
   String _getContextTitle() {
     final hour = DateTime.now().hour;
@@ -108,6 +167,10 @@ class _HomeScreenState extends State<HomeScreen> {
     _studentNameController.dispose();
     _locationController.dispose();
     _motionAlertService.dispose();
+    // Always cancel the StreamSubscription in dispose. The event loop holds a
+    // reference to the callback closure; forgetting to cancel keeps the widget
+    // alive in memory and causes setState-after-dispose errors.
+    _connectivitySubscription.cancel();
     super.dispose();
   }
 
@@ -184,6 +247,22 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Column(
               children: [
                 _HomeHeader(),
+                // ── Offline banner (Stream result) ──────────────────────
+                if (_isOffline)
+                  Container(
+                    width: double.infinity,
+                    color: Colors.red.shade700,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    child: Text(
+                      'Sin conexión — mostrando datos en caché',
+                      style: AppTextStyles.itemSubtitle
+                          .copyWith(color: Colors.white),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
                 _SearchBar(
                   controller: _searchController,
                   onChanged: _controller.search,
@@ -279,7 +358,7 @@ class _HomeScreenState extends State<HomeScreen> {
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16),
               itemCount: recommended.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 12),
+              separatorBuilder: (_, _) => const SizedBox(width: 12),
               itemBuilder: (context, index) {
                 final course = recommended[index];
                 return GestureDetector(
@@ -570,9 +649,7 @@ class _EmergencyAlertCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    isMonitoring
-                        ? 'Monitoreo activo'
-                        : 'Monitoreo inactivo',
+                    isMonitoring ? 'Monitoreo activo' : 'Monitoreo inactivo',
                     style: AppTextStyles.itemSubtitle,
                   ),
                 ),
