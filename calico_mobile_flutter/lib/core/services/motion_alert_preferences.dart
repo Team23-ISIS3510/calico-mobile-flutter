@@ -1,4 +1,5 @@
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/foundation.dart';
 
 class MotionAlertPreferences {
   MotionAlertPreferences._();
@@ -13,6 +14,8 @@ class MotionAlertPreferences {
     location: '',
     isEnabled: false,
   );
+  static final ValueNotifier<MotionAlertSettings> changes =
+      ValueNotifier<MotionAlertSettings>(_memoryCache);
 
   static Future<MotionAlertSettings> load() async {
     try {
@@ -24,8 +27,10 @@ class MotionAlertPreferences {
         isEnabled: prefs.getBool(_enabledKey) ?? false,
       );
       _memoryCache = loaded;
+      changes.value = loaded;
       return loaded;
     } catch (_) {
+      changes.value = _memoryCache;
       return _memoryCache;
     }
   }
@@ -38,6 +43,7 @@ class MotionAlertPreferences {
       isEnabled: settings.isEnabled,
     );
     _memoryCache = normalized;
+    changes.value = normalized;
 
     try {
       final prefs = await SharedPreferences.getInstance();

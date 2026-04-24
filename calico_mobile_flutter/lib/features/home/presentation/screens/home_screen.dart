@@ -13,7 +13,6 @@ import '../../data/repositories/session_repository_impl.dart';
 import '../../data/repositories/student_tutoring_repository_impl.dart';
 import '../../domain/entities/course_entity.dart';
 import '../../domain/entities/session_entity.dart';
-import '../../domain/repositories/student_tutoring_repository.dart';
 import '../widgets/course_card.dart';
 import '../widgets/session_card.dart';
 import '../controllers/home_controller.dart';
@@ -21,8 +20,6 @@ import 'course_detail_screen.dart';
 import 'session_detail_screen.dart';
 import 'package:calico_mobile_flutter/features/profile/presentation/screens/profile_screen.dart';
 import '../../../../core/utils/context_aware_helper.dart';
-import '../../../../core/services/motion_alert_service.dart';
-import '../../../../core/services/motion_alert_preferences.dart';
 
 class HomeScreen extends StatefulWidget {
   /// Firebase UID of the logged-in student. Pass empty string for guest mode.
@@ -36,35 +33,24 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   late final HomeController _controller;
-  late final StudentTutoringRepository _tutoringRepo;
   final _searchController = TextEditingController();
   int _selectedTab = 0;
-  late final MotionAlertService _motionAlertService;
-  bool _isSendingAlert = false;
-  MotionAlertSettings _motionSettings = const MotionAlertSettings(
-    alertEmail: '',
-    studentName: '',
-    location: '',
-    isEnabled: false,
-  );
 
   @override
   void initState() {
     super.initState();
     final client = ApiClient();
-    _tutoringRepo = StudentTutoringRepositoryImpl(
+    final tutoringRepo = StudentTutoringRepositoryImpl(
       AnalyticsRepositoryImpl(client),
       SessionRepositoryImpl(client),
       client,
     );
     _controller = HomeController(
       CourseRepositoryImpl(client),
-      _tutoringRepo,
+      tutoringRepo,
     );
-    _motionAlertService = MotionAlertService();
     _controller.addListener(_onUpdate);
     _controller.loadData(widget.studentId);
-    _loadMotionSettings();
   }
 
   void _onUpdate() => setState(() {});
@@ -73,74 +59,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _controller.removeListener(_onUpdate);
     _controller.dispose();
     _searchController.dispose();
-    _motionAlertService.dispose();
     super.dispose();
-  }
-
-  Future<void> _loadMotionSettings() async {
-    final saved = await MotionAlertPreferences.load();
-    if (!mounted) return;
-    final fallbackStudentName = widget.studentId.isEmpty
-        ? 'Estudiante'
-        : widget.studentId;
-    final normalized = saved.studentName.trim().isEmpty
-        ? saved.copyWith(studentName: fallbackStudentName)
-        : saved;
-    setState(() => _motionSettings = normalized);
-    await _syncMotionMonitoring();
-  }
-
-  Future<void> _syncMotionMonitoring() async {
-    if (_motionSettings.isEnabled && _motionSettings.alertEmail.trim().isNotEmpty) {
-      _motionAlertService.start(onTriggered: _onMotionAlertTriggered);
-      return;
-    }
-    await _motionAlertService.stop();
-  }
-
-  Future<void> _onMotionAlertTriggered(String reason) async {
-    if (_isSendingAlert) return;
-    setState(() => _isSendingAlert = true);
-
-    try {
-      final latestSettings = await MotionAlertPreferences.load();
-      if (latestSettings.alertEmail.trim().isEmpty) {
-        return;
-      }
-
-      await _tutoringRepo.sendMotionEmergencyAlert(
-        toEmail: latestSettings.alertEmail.trim(),
-        toName: 'Tutor de guardia',
-        studentName: latestSettings.studentName.trim().isEmpty
-            ? 'Estudiante'
-            : latestSettings.studentName.trim(),
-        alertReason: reason,
-        location: latestSettings.location.trim().isEmpty
-            ? null
-            : latestSettings.location.trim(),
-      );
-      if (mounted) {
-        _showSnackBar('Alerta enviada por correo.');
-      }
-    } catch (e) {
-      if (mounted) {
-        _showSnackBar('No se pudo enviar la alerta: $e', isError: true);
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isSendingAlert = false);
-      }
-    }
-  }
-
-  void _showSnackBar(String message, {bool isError = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message, style: GoogleFonts.lexend(fontSize: 14)),
-        backgroundColor: isError ? const Color(0xFFB00020) : Colors.green,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
   }
 
   @override
