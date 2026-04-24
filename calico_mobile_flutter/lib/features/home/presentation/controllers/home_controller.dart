@@ -2,16 +2,16 @@ import 'package:flutter/foundation.dart';
 import '../../domain/entities/course_entity.dart';
 import '../../domain/entities/session_entity.dart';
 import '../../domain/repositories/course_repository.dart';
-import '../../domain/repositories/session_repository.dart';
+import '../../domain/repositories/student_tutoring_repository.dart';
 
 enum HomeStatus { idle, loading, success, failure }
 
 /// Loads courses and sessions in parallel, and handles live search filtering.
 class HomeController extends ChangeNotifier {
   final CourseRepository _courseRepo;
-  final SessionRepository _sessionRepo;
+  final StudentTutoringRepository _tutoringRepo;
 
-  HomeController(this._courseRepo, this._sessionRepo);
+  HomeController(this._courseRepo, this._tutoringRepo);
 
   HomeStatus _status = HomeStatus.idle;
   List<CourseEntity> _allCourses = [];
@@ -51,15 +51,11 @@ class HomeController extends ChangeNotifier {
     try {
       final results = await Future.wait([
         _courseRepo.getCourses(),
-        _sessionRepo.getStudentSessions(studentId),
+        _tutoringRepo.getUpcomingSessions(studentId),
       ]);
 
       _allCourses = results[0] as List<CourseEntity>;
-      final now = DateTime.now();
-      _sessions = (results[1] as List<SessionEntity>)
-          .where((s) => s.startDateTime != null && s.startDateTime!.isAfter(now))
-          .toList()
-        ..sort((a, b) => a.startDateTime!.compareTo(b.startDateTime!));
+      _sessions = results[1] as List<SessionEntity>;
       _filteredCourses = List.from(_allCourses);
       _status = HomeStatus.success;
     } on Exception catch (e) {

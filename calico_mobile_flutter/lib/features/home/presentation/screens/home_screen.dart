@@ -1,5 +1,3 @@
-import 'package:calico_mobile_flutter/features/home/domain/entities/course_entity.dart';
-import 'package:calico_mobile_flutter/features/home/domain/entities/session_entity.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/constants/app_colors.dart';
@@ -9,10 +7,15 @@ import '../../../../core/widgets/app_logo.dart';
 import '../../../../core/widgets/app_bottom_nav.dart';
 import '../../../../core/widgets/section_header.dart';
 import '../../../../core/widgets/empty_state_view.dart';
+import '../../data/repositories/analytics_repository_impl.dart';
 import '../../data/repositories/course_repository_impl.dart';
+import '../../data/repositories/session_repository_impl.dart';
+import '../../data/repositories/student_tutoring_repository_impl.dart';
+import '../../domain/entities/course_entity.dart';
+import '../../domain/entities/session_entity.dart';
+import '../../domain/repositories/student_tutoring_repository.dart';
 import '../widgets/course_card.dart';
 import '../widgets/session_card.dart';
-import '../../data/repositories/session_repository_impl.dart';
 import '../controllers/home_controller.dart';
 import 'course_detail_screen.dart';
 import 'session_detail_screen.dart';
@@ -33,6 +36,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   late final HomeController _controller;
+  late final StudentTutoringRepository _tutoringRepo;
   final _searchController = TextEditingController();
   int _selectedTab = 0;
   late final MotionAlertService _motionAlertService;
@@ -48,58 +52,22 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     final client = ApiClient();
+    _tutoringRepo = StudentTutoringRepositoryImpl(
+      AnalyticsRepositoryImpl(client),
+      SessionRepositoryImpl(client),
+      client,
+    );
     _controller = HomeController(
       CourseRepositoryImpl(client),
-      SessionRepositoryImpl(client),
+      _tutoringRepo,
     );
-    _motionAlertService = MotionAlertService(apiClient: client);
+    _motionAlertService = MotionAlertService();
     _controller.addListener(_onUpdate);
     _controller.loadData(widget.studentId);
     _loadMotionSettings();
   }
 
   void _onUpdate() => setState(() {});
-
-  String _getContextTitle() {
-    final hour = DateTime.now().hour;
-
-    if (hour < 12) return 'Good morning';
-    if (hour < 18) return 'Good afternoon';
-    return 'Good evening';
-  }
-
-  String _getContextMessage() {
-    final hour = DateTime.now().hour;
-
-    if (widget.studentId.isEmpty) {
-      return 'Inicia sesión para ver recomendaciones personalizadas.';
-    }
-
-    if (hour < 12) {
-      return _controller.sessions.isNotEmpty
-          ? 'Empieza tu día revisando tus próximas sesiones.'
-          : 'Es un buen momento para explorar cursos para hoy.';
-    }
-
-    if (hour < 18) {
-      return _controller.sessions.isNotEmpty
-          ? 'Aún tienes tiempo para prepararte para tu próxima sesión.'
-          : 'Explora cursos y encuentra apoyo para tus clases.';
-    }
-
-    return _controller.sessions.isNotEmpty
-        ? 'Revisa tus sesiones y prepárate para mañana.'
-        : 'Un buen momento para repasar cursos antes de terminar el día.';
-  }
-
-  IconData _getContextIcon() {
-    final hour = DateTime.now().hour;
-
-    if (hour < 12) return Icons.wb_sunny_outlined;
-    if (hour < 18) return Icons.light_mode_outlined;
-    return Icons.nightlight_round;
-  }
-
   @override
   void dispose() {
     _controller.removeListener(_onUpdate);
@@ -140,7 +108,7 @@ class _HomeScreenState extends State<HomeScreen> {
         return;
       }
 
-      await _motionAlertService.sendEmergencyEmail(
+      await _tutoringRepo.sendMotionEmergencyAlert(
         toEmail: latestSettings.alertEmail.trim(),
         toName: 'Tutor de guardia',
         studentName: latestSettings.studentName.trim().isEmpty
