@@ -5,19 +5,21 @@ import 'package:sqflite/sqflite.dart';
 
 /// Singleton façade over the local SQLite cache.
 ///
-/// Holds three tables that back the selective offline-cache strategy for the
-/// home feature: upcoming sessions per student, available tutors per course,
-/// and the go-to tutor per (student, course) pair.
+/// Holds the tables that back the selective offline-cache strategy for the
+/// home feature: upcoming sessions per student, and the go-to tutor per
+/// (student, course) pair. The "Top Rated & Available Soon" carousel lives
+/// in a separate Hive box — see [AvailableTutorsHiveCache].
 class AppDatabaseService {
   AppDatabaseService._();
 
   static final AppDatabaseService instance = AppDatabaseService._();
 
   static const String _dbFileName = 'calico_cache.db';
-  static const int _dbVersion = 1;
+  // v2: the cached_available_tutors table moved to a Hive box. The migration
+  // in _onUpgrade drops it on existing installs.
+  static const int _dbVersion = 2;
 
   static const String tableUpcomingSessions = 'cache_upcoming_sessions';
-  static const String tableAvailableTutors = 'cached_available_tutors';
   static const String tableGoToTutor = 'cached_go_to_tutor';
 
   Database? _db;
@@ -61,13 +63,6 @@ class AppDatabaseService {
       )
     ''');
     await db.execute('''
-      CREATE TABLE $tableAvailableTutors (
-        course_id TEXT PRIMARY KEY,
-        payload TEXT NOT NULL,
-        last_updated INTEGER NOT NULL
-      )
-    ''');
-    await db.execute('''
       CREATE TABLE $tableGoToTutor (
         student_id TEXT NOT NULL,
         course_id TEXT NOT NULL,
@@ -79,7 +74,10 @@ class AppDatabaseService {
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    // No migrations yet — schema is v1.
+    if (oldVersion < 2) {
+      // v1 kept the tutor carousel in SQLite; v2 moved it to Hive.
+      await db.execute('DROP TABLE IF EXISTS cached_available_tutors');
+    }
   }
 
   Future<void> upsert(String table, Map<String, Object?> values) async {
@@ -115,7 +113,6 @@ class AppDatabaseService {
     final db = await openDB();
     final batch = db.batch();
     batch.delete(tableUpcomingSessions);
-    batch.delete(tableAvailableTutors);
     batch.delete(tableGoToTutor);
     await batch.commit(noResult: true);
   }

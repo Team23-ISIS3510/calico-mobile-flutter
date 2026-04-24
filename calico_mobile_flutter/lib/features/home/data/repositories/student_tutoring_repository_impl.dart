@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import '../../../../core/network/api_client.dart';
 import '../../../../core/storage/app_database.dart';
+import '../../../../core/storage/available_tutors_hive_cache.dart';
 import '../../../../core/storage/cached_result.dart';
 import '../../domain/entities/session_entity.dart';
 import '../../domain/entities/tutor_entity.dart';
@@ -14,33 +15,36 @@ class StudentTutoringRepositoryImpl implements StudentTutoringRepository {
   final SessionRepository _sessions;
   final ApiClient _apiClient;
   final AppDatabaseService _db;
+  final AvailableTutorsHiveCache _tutorsCache;
 
   StudentTutoringRepositoryImpl(
     this._analytics,
     this._sessions,
     this._apiClient, {
     AppDatabaseService? db,
-  }) : _db = db ?? AppDatabaseService.instance;
+    AvailableTutorsHiveCache? tutorsCache,
+  })  : _db = db ?? AppDatabaseService.instance,
+        _tutorsCache = tutorsCache ?? AvailableTutorsHiveCache.instance;
 
   @override
   Future<CachedResult<List<TutorEntity>>> getAvailableTutorsNext4Hours(
     String courseId,
   ) async {
+    // Hive — not SQLite — backs this carousel. See AvailableTutorsHiveCache.
     try {
       final tutors = await _analytics.getAvailableTutors(courseId);
       final now = DateTime.now();
-      await _safeUpsert(
-        AppDatabaseService.tableAvailableTutors,
-        {
-          'course_id': courseId,
-          'payload': jsonEncode(tutors.map(_tutorToCacheJson).toList()),
-          'last_updated': now.millisecondsSinceEpoch,
-        },
-      );
+      await _tutorsCache.write(courseId, tutors);
       return CachedResult(data: tutors, lastUpdated: now);
     } catch (_) {
-      final cached = await _readAvailableTutorsCache(courseId);
-      if (cached != null) return cached;
+      final cached = await _tutorsCache.read(courseId);
+      if (cached != null) {
+        return CachedResult(
+          data: cached.tutors,
+          isFromCache: true,
+          lastUpdated: cached.cachedAt,
+        );
+      }
       rethrow;
     }
   }
@@ -160,31 +164,6 @@ class StudentTutoringRepositoryImpl implements StudentTutoringRepository {
     } catch (_) {
       // Best-effort cache write. Never let storage failures break the
       // remote-success path.
-    }
-  }
-
-  Future<CachedResult<List<TutorEntity>>?> _readAvailableTutorsCache(
-    String courseId,
-  ) async {
-    try {
-      final row = await _db.queryOne(
-        AppDatabaseService.tableAvailableTutors,
-        where: 'course_id = ?',
-        whereArgs: [courseId],
-      );
-      if (row == null) return null;
-      final decoded = jsonDecode(row['payload'] as String) as List<dynamic>;
-      final tutors = decoded
-          .whereType<Map<String, dynamic>>()
-          .map(_tutorFromCacheJson)
-          .toList();
-      return CachedResult(
-        data: tutors,
-        isFromCache: true,
-        lastUpdated: _millisToDate(row['last_updated']),
-      );
-    } catch (_) {
-      return null;
     }
   }
 

@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart';
 
 import '../../../../core/local/pending_sessions_database.dart';
-import '../../../../core/storage/cached_result.dart';
 import '../../../../core/utils/course_filter_isolate.dart';
 import '../../domain/entities/course_entity.dart';
 import '../../domain/entities/session_entity.dart';
