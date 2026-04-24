@@ -66,39 +66,9 @@ class _HomeScreenState extends State<HomeScreen> {
     _connectivitySubscription =
         Connectivity().onConnectivityChanged.listen(_onConnectivityChanged);
 
-<<<<<<< HEAD
-      // When coming back online: sync pending SQLite sessions and any pending
-      // profile description edit, then refresh the pending-sessions list so
-      // the ⏳ badges disappear for rows that were successfully confirmed.
-      if (!offline && widget.studentId.isNotEmpty) {
-        final client = ApiClient();
-        SyncService(client).syncPendingSessions(widget.studentId).then((_) {
-          if (!mounted) return;
-          _controller.loadPendingSessions(widget.studentId);
-          _controller.loadSessions(widget.studentId).then((_) {
-            if (mounted) setState(() {});
-          });
-        });
-        ProfileRepositoryImpl(client).syncPendingUpdate(widget.studentId);
-      }
-    });
-
-    // ── Future.wait: parallel data loading ───────────────────────────────
-    // Flutter runs on a single-threaded event loop (one Isolate). Async
-    // functions do NOT create OS threads; they schedule continuations on the
-    // event queue. Future.wait submits all three futures to the queue at once,
-    // so their I/O wait times overlap — total latency equals the slowest call
-    // rather than the sum of all calls.
-    //
-    // eagerError: false means every future runs to completion even if one
-    // fails; we get partial data (e.g. courses without sessions) rather than
-    // aborting everything on the first error, which is more resilient for a
-    // home screen that can display partial state.
-=======
     // Run all I/O in parallel so total latency equals the slowest call.
     // eagerError: false lets partial data render instead of aborting on the
     // first failure, which is the right default for a home feed.
->>>>>>> 73e141c7967356fa917ebf0339687b87dd1fa25e
     _controller.markLoading();
     Future.wait(
       [
@@ -131,7 +101,11 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!offline && widget.studentId.isNotEmpty) {
       final client = ApiClient();
       SyncService(client).syncPendingSessions(widget.studentId).then((_) {
-        if (mounted) _controller.loadPendingSessions(widget.studentId);
+        if (!mounted) return;
+        _controller.loadPendingSessions(widget.studentId);
+        _controller.loadSessions(widget.studentId).then((_) {
+          if (mounted) setState(() {});
+        });
       });
       ProfileRepositoryImpl(client).syncPendingUpdate(widget.studentId);
     }
