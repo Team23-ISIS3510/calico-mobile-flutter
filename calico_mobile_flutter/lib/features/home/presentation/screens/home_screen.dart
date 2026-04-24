@@ -86,7 +86,11 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!offline && widget.studentId.isNotEmpty) {
         final client = ApiClient();
         SyncService(client).syncPendingSessions(widget.studentId).then((_) {
-          if (mounted) _controller.loadPendingSessions(widget.studentId);
+          if (!mounted) return;
+          _controller.loadPendingSessions(widget.studentId);
+          _controller.loadSessions(widget.studentId).then((_) {
+            if (mounted) setState(() {});
+          });
         });
         ProfileRepositoryImpl(client).syncPendingUpdate(widget.studentId);
       }
