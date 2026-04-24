@@ -91,4 +91,15 @@ class MotionAlertCoordinator {
       _isSending = false;
     }
   }
+
+  /// Clears sensitive local alert data after logout.
+  ///
+  /// - Stops active motion monitoring
+  /// - Resets persisted alert preferences
+  /// - Removes local alert history log
+  Future<void> clearLocalDataForLogout() async {
+    await _motionService.stop();
+    await MotionAlertPreferences.clear();
+    await _log.clear();
+  }
 }

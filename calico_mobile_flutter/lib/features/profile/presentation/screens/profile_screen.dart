@@ -4,6 +4,8 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:calico_mobile_flutter/core/constants/app_colors.dart';
 import 'package:calico_mobile_flutter/core/constants/app_text_styles.dart';
 import 'package:calico_mobile_flutter/core/network/api_client.dart';
+import 'package:calico_mobile_flutter/core/services/motion_alert_coordinator.dart';
+import 'package:calico_mobile_flutter/core/services/motion_alert_file_log.dart';
 import 'package:calico_mobile_flutter/core/services/motion_alert_preferences.dart';
 import 'package:calico_mobile_flutter/features/auth/presentation/screens/login_screen.dart';
 import 'package:calico_mobile_flutter/features/profile/data/repositories/profile_repository_impl.dart';
@@ -144,6 +146,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _openMotionAlertDialog() async {
+    final alertEvents = await MotionAlertFileLog.instance.readAlertEvents();
+    final previousAlert = alertEvents.isNotEmpty ? alertEvents.first : null;
     final defaultProfileEmail = _controller.profile?.email.trim() ?? '';
     final emailController = TextEditingController(
       text: _motionSettings.alertEmail.isNotEmpty
@@ -178,6 +182,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   'Configura el correo y activa el monitoreo. La configuración quedará guardada para futuras alertas.',
                   style: AppTextStyles.itemSubtitle,
                 ),
+                const SizedBox(height: 12),
+                if (previousAlert != null)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF7F3EA),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFFE6DAC2)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Alerta anterior',
+                          style: AppTextStyles.itemTitle.copyWith(fontSize: 13),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _formatAlertPreview(previousAlert),
+                          style: AppTextStyles.itemSubtitle.copyWith(fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ),
                 const SizedBox(height: 12),
                 _AlertTextField(
                   controller: emailController,
@@ -271,6 +300,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  String _formatAlertPreview(AlertLogEntry entry) {
+    final dt = entry.timestamp.toLocal();
+    final day = dt.day.toString().padLeft(2, '0');
+    final month = dt.month.toString().padLeft(2, '0');
+    final year = dt.year.toString();
+    final hour = dt.hour.toString().padLeft(2, '0');
+    final minute = dt.minute.toString().padLeft(2, '0');
+    final state = entry.success ? 'enviada' : 'fallida';
+    return '$day/$month/$year $hour:$minute · $state\n${entry.reason}';
+  }
+
   Future<void> _handleLogout() async {
     final shouldLogout = await showDialog<bool>(
       context: context,
@@ -306,8 +346,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
 
     try {
+      await MotionAlertCoordinator.instance.clearLocalDataForLogout();
       await FirebaseAuth.instance.signOut();
       if (!mounted) return;
+      setState(() {
+        _motionSettings = const MotionAlertSettings(
+          alertEmail: '',
+          studentName: '',
+          location: '',
+          isEnabled: false,
+        );
+      });
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const LoginScreen()),
         (route) => false,

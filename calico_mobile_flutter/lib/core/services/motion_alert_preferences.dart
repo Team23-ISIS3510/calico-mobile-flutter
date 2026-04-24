@@ -57,6 +57,29 @@ class MotionAlertPreferences {
       // Fallback: keep settings in memory if plugin channel is unavailable.
     }
   }
+
+  static Future<void> clear() async {
+    const cleared = MotionAlertSettings(
+      alertEmail: '',
+      studentName: '',
+      location: '',
+      isEnabled: false,
+    );
+    _memoryCache = cleared;
+    changes.value = cleared;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await Future.wait([
+        prefs.remove(_emailKey),
+        prefs.remove(_studentNameKey),
+        prefs.remove(_locationKey),
+        prefs.remove(_enabledKey),
+      ]);
+    } catch (_) {
+      // Keep in-memory cleanup even when persistence fails.
+    }
+  }
 }
 
 class MotionAlertSettings {
