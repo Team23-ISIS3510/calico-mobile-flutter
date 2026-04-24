@@ -6,8 +6,10 @@ import '../../../../core/network/api_client.dart';
 import '../../domain/entities/course_entity.dart';
 import '../../domain/entities/session_entity.dart';
 import '../../domain/entities/tutor_entity.dart';
-import '../../domain/repositories/analytics_repository.dart';
 import '../../data/repositories/analytics_repository_impl.dart';
+import '../../data/repositories/session_repository_impl.dart';
+import '../../data/repositories/student_tutoring_repository_impl.dart';
+import '../../domain/repositories/student_tutoring_repository.dart';
 import '../widgets/tutor_carousel_card.dart';
 import '../widgets/booking_bottom_sheet.dart';
 
@@ -31,19 +33,24 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
   List<TutorEntity>? _tutors;
   bool _goToTutorLoaded = false;
   TutorEntity? _goToTutor;
-  late final AnalyticsRepository _repo;
+  late final StudentTutoringRepository _repo;
 
   @override
   void initState() {
     super.initState();
-    _repo = AnalyticsRepositoryImpl(ApiClient());
+    final client = ApiClient();
+    _repo = StudentTutoringRepositoryImpl(
+      AnalyticsRepositoryImpl(client),
+      SessionRepositoryImpl(client),
+      client,
+    );
     _loadTutors(_repo);
     if (widget.studentId.isNotEmpty) _loadGoToTutor(_repo);
   }
 
-  Future<void> _loadTutors(AnalyticsRepository repo) async {
+  Future<void> _loadTutors(StudentTutoringRepository repo) async {
     try {
-      final tutors = await repo.getAvailableTutors(widget.course.id);
+      final tutors = await repo.getAvailableTutorsNext4Hours(widget.course.id);
       if (mounted) {
         setState(() => _tutors = tutors);
         repo.trackCarouselEvent(
@@ -57,9 +64,9 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
     }
   }
 
-  Future<void> _loadGoToTutor(AnalyticsRepository repo) async {
+  Future<void> _loadGoToTutor(StudentTutoringRepository repo) async {
     try {
-      final tutor = await repo.getReturningTutor(
+      final tutor = await repo.getGoToTutor(
         widget.studentId,
         widget.course.id,
       );
