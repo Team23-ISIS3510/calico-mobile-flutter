@@ -7,8 +7,8 @@
 .buildlog/
 .history
 
-
-
+.claude/
+CLAUDE.md
 # Flutter repo-specific
 /bin/cache/
 /bin/internal/bootstrap.bat
