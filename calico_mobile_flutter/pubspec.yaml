@@ -38,10 +38,17 @@ dependencies:
   google_fonts: ^6.2.1
   url_launcher: ^6.3.0
   sensors_plus: ^7.0.0
+  # Connectivity stream — used to trigger sync and show the offline banner.
+  connectivity_plus: ^6.0.0
+  # SharedPreferences — lightweight key-value store for profile + alert prefs.
   shared_preferences: ^2.5.3
+  # sqflite — raw SQLite cache for tutors / go-to tutor / upcoming sessions.
   sqflite: ^2.3.3+1
-  path: ^1.9.0
-  path_provider: ^2.1.4
+  # Drift (SQLite ORM) — structured pending-sessions queue with typed queries.
+  drift: ^2.22.1
+  sqlite3_flutter_libs: ^0.5.0
+  path_provider: ^2.1.5
+  path: ^1.9.1
 
 dev_dependencies:
   flutter_test:
@@ -54,6 +61,9 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  # Code generators for Drift SQL tables — never included in release APK
+  drift_dev: ^2.22.1
+  build_runner: ^2.4.13
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

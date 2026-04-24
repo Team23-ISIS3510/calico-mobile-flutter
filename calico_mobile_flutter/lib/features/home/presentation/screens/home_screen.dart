@@ -1,23 +1,29 @@
+import 'dart:async';
+
+import 'package:calico_mobile_flutter/features/profile/data/repositories/profile_repository_impl.dart';
+import 'package:calico_mobile_flutter/features/profile/presentation/screens/profile_screen.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
+
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_text_styles.dart';
 import '../../../../core/network/api_client.dart';
-import '../../../../core/widgets/app_logo.dart';
+import '../../../../core/services/sync_service.dart';
+import '../../../../core/utils/context_aware_helper.dart';
 import '../../../../core/widgets/app_bottom_nav.dart';
-import '../../../../core/widgets/section_header.dart';
+import '../../../../core/widgets/app_logo.dart';
 import '../../../../core/widgets/empty_state_view.dart';
 import '../../../../core/widgets/offline_cache_notice.dart';
+import '../../../../core/widgets/section_header.dart';
 import '../../data/repositories/analytics_repository_impl.dart';
 import '../../data/repositories/course_repository_impl.dart';
 import '../../data/repositories/session_repository_impl.dart';
 import '../../data/repositories/student_tutoring_repository_impl.dart';
+import '../controllers/home_controller.dart';
 import '../widgets/course_card.dart';
 import '../widgets/session_card.dart';
-import '../controllers/home_controller.dart';
 import 'course_detail_screen.dart';
 import 'session_detail_screen.dart';
-import 'package:calico_mobile_flutter/features/profile/presentation/screens/profile_screen.dart';
-import '../../../../core/utils/context_aware_helper.dart';
 
 class HomeScreen extends StatefulWidget {
   /// Firebase UID of the logged-in student. Pass empty string for guest mode.
@@ -34,9 +40,17 @@ class _HomeScreenState extends State<HomeScreen> {
   final _searchController = TextEditingController();
   int _selectedTab = 0;
 
+  // StreamSubscription on the connectivity feed. We must cancel it in
+  // dispose(); forgetting to do so keeps the callback (and this State) alive
+  // and causes setState-after-dispose errors.
+  late final StreamSubscription<List<ConnectivityResult>>
+      _connectivitySubscription;
+  bool _isOffline = false;
+
   @override
   void initState() {
     super.initState();
+
     final client = ApiClient();
     final tutoringRepo = StudentTutoringRepositoryImpl(
       AnalyticsRepositoryImpl(client),
@@ -48,15 +62,57 @@ class _HomeScreenState extends State<HomeScreen> {
       tutoringRepo,
     );
     _controller.addListener(_onUpdate);
-    _controller.loadData(widget.studentId);
+
+    _connectivitySubscription =
+        Connectivity().onConnectivityChanged.listen(_onConnectivityChanged);
+
+    // Run all I/O in parallel so total latency equals the slowest call.
+    // eagerError: false lets partial data render instead of aborting on the
+    // first failure, which is the right default for a home feed.
+    _controller.markLoading();
+    Future.wait(
+      [
+        _controller.loadCourses(widget.studentId),
+        _controller.loadSessions(widget.studentId),
+        _controller.loadPendingSessions(widget.studentId),
+      ],
+      eagerError: false,
+    ).then((_) {
+      if (!mounted) return;
+      _controller.markSuccess();
+    }).catchError((Object e) {
+      if (!mounted) return;
+      _controller.markFailure(e.toString());
+    });
   }
 
-  void _onUpdate() => setState(() {});
+  void _onUpdate() {
+    if (mounted) setState(() {});
+  }
+
+  void _onConnectivityChanged(List<ConnectivityResult> results) {
+    final offline =
+        results.isEmpty || results.every((r) => r == ConnectivityResult.none);
+    if (mounted) setState(() => _isOffline = offline);
+
+    // On reconnect: flush pending offline bookings, flush any pending profile
+    // edit, then refresh the controller's pending-session list so ⏳ badges
+    // disappear for rows that were just confirmed by the server.
+    if (!offline && widget.studentId.isNotEmpty) {
+      final client = ApiClient();
+      SyncService(client).syncPendingSessions(widget.studentId).then((_) {
+        if (mounted) _controller.loadPendingSessions(widget.studentId);
+      });
+      ProfileRepositoryImpl(client).syncPendingUpdate(widget.studentId);
+    }
+  }
+
   @override
   void dispose() {
     _controller.removeListener(_onUpdate);
     _controller.dispose();
     _searchController.dispose();
+    _connectivitySubscription.cancel();
     super.dispose();
   }
 
@@ -72,6 +128,21 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Column(
               children: [
                 _HomeHeader(),
+                if (_isOffline)
+                  Container(
+                    width: double.infinity,
+                    color: Colors.red.shade700,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    child: Text(
+                      'Sin conexión — mostrando datos en caché',
+                      style: AppTextStyles.itemSubtitle
+                          .copyWith(color: Colors.white),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
                 _SearchBar(
                   controller: _searchController,
                   onChanged: _controller.search,
@@ -159,7 +230,7 @@ class _HomeScreenState extends State<HomeScreen> {
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16),
               itemCount: recommended.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 12),
+              separatorBuilder: (_, _) => const SizedBox(width: 12),
               itemBuilder: (context, index) {
                 final course = recommended[index];
                 return GestureDetector(
@@ -230,7 +301,22 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
 
-        // ── Sessions ─────────────────────────────────────────────────────
+        // ── Pending sessions (queued offline in SQLite) ───────────────────
+        // Rows with synced = false. Shown with a ⏳ badge so the student
+        // knows they are not yet server-confirmed. The list refreshes when
+        // SyncService marks them synced after a reconnection.
+        if (_controller.pendingSessions.isNotEmpty) ...[
+          const SectionHeader('Pending Sync'),
+          ..._controller.pendingSessions.map(
+            (s) => SessionCard(
+              session: s,
+              showPendingBadge: true,
+              onTap: () {},
+            ),
+          ),
+        ],
+
+        // ── Confirmed sessions ────────────────────────────────────────────
         const SectionHeader('Upcoming Sessions'),
         if (_controller.sessionsFromCache)
           OfflineCacheNotice(
@@ -286,14 +372,12 @@ class _SearchBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      // padding: 12px 16px — matches design spec
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: SizedBox(
         height: 48,
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Left icon panel — beige, left-rounded only
             Container(
               width: 48,
               decoration: const BoxDecoration(
@@ -305,7 +389,6 @@ class _SearchBar extends StatelessWidget {
               ),
               child: const Icon(Icons.search, color: AppColors.brown, size: 24),
             ),
-            // Right text field panel — beige, right-rounded only
             Expanded(
               child: Container(
                 decoration: const BoxDecoration(

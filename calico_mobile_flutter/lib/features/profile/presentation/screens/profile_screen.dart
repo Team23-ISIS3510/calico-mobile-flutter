@@ -80,6 +80,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    // ── Offline cache badge ─────────────────────────────
+                    // Shown when getProfile() fell back to SharedPreferences
+                    // because the API was unreachable.  Subtle but visible so
+                    // the user knows the data may be stale.
+                    if (_controller.fromCache)
+                      Container(
+                        color: Colors.orange.shade50,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 6,
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.offline_bolt,
+                              size: 14,
+                              color: Colors.orange.shade700,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Showing saved data',
+                              style: AppTextStyles.itemSubtitle.copyWith(
+                                color: Colors.orange.shade700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     _ProfileHeader(profile: _controller.profile!),
                     _AboutSection(
                       profile: _controller.profile!,

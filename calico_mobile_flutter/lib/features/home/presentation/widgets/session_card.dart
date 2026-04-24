@@ -13,11 +13,16 @@ import '../../domain/entities/session_entity.dart';
 class SessionCard extends StatelessWidget {
   final SessionEntity session;
   final VoidCallback onTap;
+  /// When true the card shows a ⏳ Pending sync badge, indicating this session
+  /// was saved to the local SQLite queue while offline and has not yet been
+  /// confirmed by the server.
+  final bool showPendingBadge;
 
   const SessionCard({
     super.key,
     required this.session,
     required this.onTap,
+    this.showPendingBadge = false,
   });
 
   @override
@@ -70,6 +75,22 @@ class SessionCard extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
+                  if (showPendingBadge) ...[
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        const Text('⏳', style: TextStyle(fontSize: 11)),
+                        const SizedBox(width: 3),
+                        Text(
+                          'Pending sync',
+                          style: AppTextStyles.itemSubtitle.copyWith(
+                            color: Colors.orange.shade700,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),
