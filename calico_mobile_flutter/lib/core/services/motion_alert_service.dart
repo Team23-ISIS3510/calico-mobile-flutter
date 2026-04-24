@@ -3,18 +3,13 @@ import 'dart:math';
 
 import 'package:sensors_plus/sensors_plus.dart';
 
-import '../network/api_client.dart';
-
 class MotionAlertService {
   MotionAlertService({
-    required ApiClient apiClient,
     this.threshold = 22.0,
     this.minHitsInWindow = 8,
     this.window = const Duration(seconds: 30),
     this.cooldown = const Duration(minutes: 5),
-  }) : _apiClient = apiClient;
-
-  final ApiClient _apiClient;
+  });
   final double threshold;
   final int minHitsInWindow;
   final Duration window;
@@ -60,25 +55,6 @@ class MotionAlertService {
         'Se detectaron $minHitsInWindow movimientos bruscos en ${window.inSeconds} segundos.',
       );
     });
-  }
-
-  Future<void> sendEmergencyEmail({
-    required String toEmail,
-    String? toName,
-    required String studentName,
-    required String alertReason,
-    String? location,
-  }) async {
-    await _apiClient.post(
-      '/notifications/emergency-alert/email',
-      body: {
-        'toEmail': toEmail,
-        'toName': toName,
-        'studentName': studentName,
-        'alertReason': alertReason,
-        'location': location,
-      },
-    );
   }
 
   Future<void> stop() async {
