@@ -1,4 +1,5 @@
 import '../network/api_client.dart';
+import 'motion_alert_file_log.dart';
 import 'motion_alert_preferences.dart';
 import 'motion_alert_service.dart';
 
@@ -9,6 +10,7 @@ class MotionAlertCoordinator {
 
   final MotionAlertService _motionService = MotionAlertService();
   final ApiClient _apiClient = ApiClient();
+  final MotionAlertFileLog _log = MotionAlertFileLog.instance;
   bool _initialized = false;
   bool _isSending = false;
 
@@ -47,21 +49,44 @@ class MotionAlertCoordinator {
     _isSending = true;
     try {
       final settings = await MotionAlertPreferences.load();
-      if (settings.alertEmail.trim().isEmpty) return;
-      await _apiClient.post(
-        '/notifications/emergency-alert/email',
-        body: {
-          'toEmail': settings.alertEmail.trim(),
-          'toName': 'Tutor de guardia',
-          'studentName': settings.studentName.trim().isEmpty
-              ? 'Estudiante'
-              : settings.studentName.trim(),
-          'alertReason': reason,
-          'location': settings.location.trim().isEmpty
-              ? null
-              : settings.location.trim(),
-        },
-      );
+      final toEmail = settings.alertEmail.trim();
+      if (toEmail.isEmpty) return;
+
+      final location = settings.location.trim();
+      final studentName = settings.studentName.trim().isEmpty
+          ? 'Estudiante'
+          : settings.studentName.trim();
+
+      try {
+        await _apiClient.post(
+          '/notifications/emergency-alert/email',
+          body: {
+            'toEmail': toEmail,
+            'toName': 'Tutor de guardia',
+            'studentName': studentName,
+            'alertReason': reason,
+            'location': location.isEmpty ? null : location,
+          },
+        );
+        await _log.appendAlertEvent(
+          reason: reason,
+          toEmail: toEmail,
+          location: location,
+          success: true,
+        );
+      } catch (e) {
+        await _log.appendAlertEvent(
+          reason: reason,
+          toEmail: toEmail,
+          location: location,
+          success: false,
+          error: e.toString(),
+        );
+        rethrow;
+      }
+    } catch (_) {
+      // Swallow: the failure is already recorded in the log, and this is
+      // a background trigger with no user-facing surface to report to.
     } finally {
       _isSending = false;
     }
