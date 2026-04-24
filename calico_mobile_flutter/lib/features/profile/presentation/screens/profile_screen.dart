@@ -144,8 +144,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _openMotionAlertDialog() async {
+    final defaultProfileEmail = _controller.profile?.email.trim() ?? '';
     final emailController = TextEditingController(
-      text: _motionSettings.alertEmail,
+      text: _motionSettings.alertEmail.isNotEmpty
+          ? _motionSettings.alertEmail
+          : defaultProfileEmail,
     );
     final nameController = TextEditingController(
       text: _motionSettings.studentName.isEmpty
@@ -229,7 +232,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             TextButton(
               onPressed: () {
-                if (enabled && emailController.text.trim().isEmpty) {
+                final resolvedEmail = emailController.text.trim().isNotEmpty
+                    ? emailController.text.trim()
+                    : defaultProfileEmail;
+                if (enabled && resolvedEmail.isEmpty) {
                   setDialogState(() {
                     errorText = 'Ingresa un correo válido para activar.';
                   });
@@ -238,7 +244,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Navigator.pop(
                   dialogContext,
                   MotionAlertSettings(
-                    alertEmail: emailController.text.trim(),
+                    alertEmail: resolvedEmail,
                     studentName: nameController.text.trim(),
                     location: locationController.text.trim(),
                     isEnabled: enabled,
@@ -257,8 +263,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     if (updated == null) return;
     await MotionAlertPreferences.save(updated);
+    final persisted = await MotionAlertPreferences.load();
     if (!mounted) return;
-    setState(() => _motionSettings = updated);
+    setState(() => _motionSettings = persisted);
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Configuración de alerta guardada.')),
     );

@@ -7,25 +7,49 @@ class MotionAlertPreferences {
   static const String _studentNameKey = 'motion_alert_student_name';
   static const String _locationKey = 'motion_alert_location';
   static const String _enabledKey = 'motion_alert_enabled';
+  static MotionAlertSettings _memoryCache = const MotionAlertSettings(
+    alertEmail: '',
+    studentName: '',
+    location: '',
+    isEnabled: false,
+  );
 
   static Future<MotionAlertSettings> load() async {
-    final prefs = await SharedPreferences.getInstance();
-    return MotionAlertSettings(
-      alertEmail: prefs.getString(_emailKey) ?? '',
-      studentName: prefs.getString(_studentNameKey) ?? '',
-      location: prefs.getString(_locationKey) ?? '',
-      isEnabled: prefs.getBool(_enabledKey) ?? false,
-    );
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final loaded = MotionAlertSettings(
+        alertEmail: prefs.getString(_emailKey) ?? '',
+        studentName: prefs.getString(_studentNameKey) ?? '',
+        location: prefs.getString(_locationKey) ?? '',
+        isEnabled: prefs.getBool(_enabledKey) ?? false,
+      );
+      _memoryCache = loaded;
+      return loaded;
+    } catch (_) {
+      return _memoryCache;
+    }
   }
 
   static Future<void> save(MotionAlertSettings settings) async {
-    final prefs = await SharedPreferences.getInstance();
-    await Future.wait([
-      prefs.setString(_emailKey, settings.alertEmail.trim()),
-      prefs.setString(_studentNameKey, settings.studentName.trim()),
-      prefs.setString(_locationKey, settings.location.trim()),
-      prefs.setBool(_enabledKey, settings.isEnabled),
-    ]);
+    final normalized = MotionAlertSettings(
+      alertEmail: settings.alertEmail.trim(),
+      studentName: settings.studentName.trim(),
+      location: settings.location.trim(),
+      isEnabled: settings.isEnabled,
+    );
+    _memoryCache = normalized;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await Future.wait([
+        prefs.setString(_emailKey, normalized.alertEmail),
+        prefs.setString(_studentNameKey, normalized.studentName),
+        prefs.setString(_locationKey, normalized.location),
+        prefs.setBool(_enabledKey, normalized.isEnabled),
+      ]);
+    } catch (_) {
+      // Fallback: keep settings in memory if plugin channel is unavailable.
+    }
   }
 }
 
