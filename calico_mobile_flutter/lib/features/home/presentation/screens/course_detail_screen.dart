@@ -6,6 +6,9 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_text_styles.dart';
 import '../../../../core/network/api_client.dart';
+import '../../data/repositories/analytics_repository_impl.dart';
+import '../../data/repositories/session_repository_impl.dart';
+import '../../data/repositories/student_tutoring_repository_impl.dart';
 import '../../domain/entities/course_entity.dart';
 import '../../domain/entities/session_entity.dart';
 import '../../domain/entities/tutor_entity.dart';
@@ -208,7 +211,7 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Sin conexión: mostrando datos locales cuando están disponibles.',
+                        'Application offline, showing cached data.',
                         style: AppTextStyles.itemSubtitle.copyWith(
                           color: Colors.orange.shade700,
                         ),
@@ -410,7 +413,7 @@ class _TutorSection extends StatelessWidget {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text(
-                            'Ya tienes una sesión pendiente con ${tutor.name}.',
+                            'You already have a pending session with ${tutor.name}.',
                           ),
                           behavior: SnackBarBehavior.floating,
                         ),
@@ -540,11 +543,19 @@ class _GoToTutorSection extends StatelessWidget {
         ),
         if (fromCache) ...[
           const SizedBox(height: 4),
-          Text(
-            lastUpdated == null
-                ? 'Mostrando dato en caché'
-                : 'Mostrando dato en caché (actualizado ${_formatCacheTime(lastUpdated!)})',
-            style: AppTextStyles.itemSubtitle.copyWith(color: Colors.orange.shade700),
+          Row(
+            children: [
+              Icon(Icons.cloud_off, size: 13, color: Colors.orange.shade600),
+              const SizedBox(width: 4),
+              Text(
+                lastUpdated != null
+                    ? 'Showing cached information since: ${_formatCacheTime(lastUpdated!)}'
+                    : 'Showing cached information',
+                style: AppTextStyles.itemSubtitle.copyWith(
+                  color: Colors.orange.shade600,
+                ),
+              ),
+            ],
           ),
         ],
         const SizedBox(height: 14),
@@ -557,7 +568,7 @@ class _GoToTutorSection extends StatelessWidget {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text(
-                    'Ya tienes una sesión pendiente con ${tutor.name}.',
+                    'You already have a pending session with ${tutor.name}.',
                   ),
                   behavior: SnackBarBehavior.floating,
                 ),

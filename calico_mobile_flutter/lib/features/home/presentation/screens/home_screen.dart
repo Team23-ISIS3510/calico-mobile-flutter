@@ -170,6 +170,22 @@ class _HomeScreenState extends State<HomeScreen> {
         selectedIndex: _selectedTab,
         onTap: (i) {
           if (i == 1) {
+            if (widget.studentId.trim().isEmpty) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Guest mode: please sign in to view your profile.',
+                    style: AppTextStyles.itemSubtitle.copyWith(
+                      color: Colors.white,
+                    ),
+                  ),
+                  backgroundColor: Colors.blueGrey,
+                  behavior: SnackBarBehavior.floating,
+                  margin: const EdgeInsets.all(16),
+                ),
+              );
+              return;
+            }
             Navigator.push(
               context,
               MaterialPageRoute(
@@ -327,6 +343,22 @@ class _HomeScreenState extends State<HomeScreen> {
 
         // ── Confirmed sessions ────────────────────────────────────────────
         const SectionHeader('Upcoming Sessions'),
+        if (_isOffline || _controller.sessionsFromCache)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+            child: Row(
+              children: [
+                Icon(Icons.cloud_off, size: 13, color: Colors.orange.shade600),
+                const SizedBox(width: 4),
+                Text(
+                  'Loading data from cache',
+                  style: AppTextStyles.itemSubtitle.copyWith(
+                    color: Colors.orange.shade600,
+                  ),
+                ),
+              ],
+            ),
+          ),
         if (_controller.sessionsFromCache)
           OfflineCacheNotice(
             lastUpdated: _controller.sessionsLastUpdated,

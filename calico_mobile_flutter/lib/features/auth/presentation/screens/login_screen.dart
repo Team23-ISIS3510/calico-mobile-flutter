@@ -46,7 +46,7 @@ class _LoginScreenState extends State<LoginScreen> {
       final uid = _controller.userId?.trim() ?? '';
       if (uid.isEmpty) {
         _showSnackBar(
-          'No recibimos un identificador de usuario. Intenta iniciar sesión otra vez.',
+          'Login succeeded but no user id was returned. Please try again.',
           error: true,
         );
         _controller.reset();
@@ -478,6 +478,7 @@ class _ForgotPasswordLink extends StatelessWidget {
                 await FirebaseAuth.instance.sendPasswordResetEmail(
                   email: email,
                 );
+                if (!context.mounted) return;
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
@@ -494,6 +495,7 @@ class _ForgotPasswordLink extends StatelessWidget {
                   ),
                 );
               } catch (e) {
+                if (!context.mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text(

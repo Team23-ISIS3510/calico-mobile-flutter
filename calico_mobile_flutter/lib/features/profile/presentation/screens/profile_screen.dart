@@ -206,6 +206,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _openMotionAlertDialog() async {
+    // Ensure monitoring + counters are initialized before showing the dialog.
+    await MotionAlertCoordinator.instance.initialize();
     final alertEvents = await MotionAlertFileLog.instance.readAlertEvents();
     final previousAlert = alertEvents.isNotEmpty ? alertEvents.first : null;
     final defaultProfileEmail = _controller.profile?.email.trim() ?? '';
@@ -312,6 +314,51 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ],
                 ),
+                const SizedBox(height: 10),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF7F3EA),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFFE6DAC2)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Motion detection (debug)',
+                        style: AppTextStyles.itemTitle.copyWith(fontSize: 13),
+                      ),
+                      const SizedBox(height: 6),
+                      ValueListenableBuilder<int>(
+                        valueListenable: MotionAlertCoordinator.instance.hitsInWindow,
+                        builder: (context, hits, _) => Text(
+                          'Shake hits (last ${MotionAlertCoordinator.instance.window.inSeconds}s): '
+                          '$hits / ${MotionAlertCoordinator.instance.minHitsInWindow}',
+                          style:
+                              AppTextStyles.itemSubtitle.copyWith(fontSize: 12),
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      ValueListenableBuilder<int>(
+                        valueListenable: MotionAlertCoordinator.instance.totalHits,
+                        builder: (context, total, _) => Text(
+                          'Total hits (since monitoring started): $total',
+                          style:
+                              AppTextStyles.itemSubtitle.copyWith(fontSize: 12),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        enabled
+                            ? 'Tip: shake firmly until the counter reaches the threshold.'
+                            : 'Enable monitoring to start counting hits.',
+                        style: AppTextStyles.itemSubtitle.copyWith(fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
@@ -363,7 +410,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   String _formatAlertPreview(AlertLogEntry entry) {
     final dt = entry.timestamp.toLocal();
-    final day = dt.day.toString().padLeft(2, '0');
+    final day = dt.day.toString().padLeft(2, '0');      
     final month = dt.month.toString().padLeft(2, '0');
     final year = dt.year.toString();
     final hour = dt.hour.toString().padLeft(2, '0');
