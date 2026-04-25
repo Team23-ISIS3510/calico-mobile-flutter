@@ -34,9 +34,18 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() {});
 
     if (_controller.status == LoginStatus.success) {
+      final uid = _controller.userId?.trim() ?? '';
+      if (uid.isEmpty) {
+        _showSnackBar(
+          'Login succeeded but no user id was returned. Please try again.',
+          error: true,
+        );
+        _controller.reset();
+        return;
+      }
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          builder: (_) => HomeScreen(studentId: _controller.userId ?? ''),
+          builder: (_) => HomeScreen(studentId: uid),
         ),
       );
     } else if (_controller.status == LoginStatus.failure) {
@@ -365,6 +374,7 @@ class _ForgotPasswordLink extends StatelessWidget {
                 await FirebaseAuth.instance.sendPasswordResetEmail(
                   email: email,
                 );
+                if (!context.mounted) return;
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
@@ -381,6 +391,7 @@ class _ForgotPasswordLink extends StatelessWidget {
                   ),
                 );
               } catch (e) {
+                if (!context.mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text(

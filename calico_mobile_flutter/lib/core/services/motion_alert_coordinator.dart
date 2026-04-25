@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import '../network/api_client.dart';
 import 'motion_alert_file_log.dart';
 import 'motion_alert_preferences.dart';
@@ -13,6 +15,13 @@ class MotionAlertCoordinator {
   final MotionAlertFileLog _log = MotionAlertFileLog.instance;
   bool _initialized = false;
   bool _isSending = false;
+
+  /// Exposes motion-hit counters so Profile can render real-time feedback.
+  /// These are best-effort UX/debug signals and do not affect alert sending.
+  ValueListenable<int> get hitsInWindow => _motionService.hitsInWindow;
+  ValueListenable<int> get totalHits => _motionService.totalHits;
+  int get minHitsInWindow => _motionService.minHitsInWindow;
+  Duration get window => _motionService.window;
 
   Future<void> initialize() async {
     if (_initialized) return;

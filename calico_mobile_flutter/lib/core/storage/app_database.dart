@@ -9,6 +9,10 @@ import 'package:sqflite/sqflite.dart';
 /// home feature: upcoming sessions per student, and the go-to tutor per
 /// (student, course) pair. The "Top Rated & Available Soon" carousel lives
 /// in a separate Hive box — see [AvailableTutorsHiveCache].
+///
+/// In-memory L1 LRU + TTL for the HTTP payloads that feed these rows lives in
+/// [SessionRepositoryImpl] and [AnalyticsRepositoryImpl] — see
+/// [HomeRemoteMemoryCachePolicy]; this database remains the L2 offline layer.
 class AppDatabaseService {
   AppDatabaseService._();
 

@@ -29,6 +29,12 @@ class ProfileRepositoryImpl implements ProfileRepository {
 
   bool _lastLoadFromCache = false;
 
+  String _requireUserId(String userId) {
+    final id = userId.trim();
+    if (id.isEmpty) throw Exception('Invalid userId (empty)');
+    return id;
+  }
+
   // In-memory L1 layer for pending offline description edits.
   //
   // ArrayMap<userId, pendingDescription> — one entry per user who edited their
@@ -58,16 +64,17 @@ class ProfileRepositoryImpl implements ProfileRepository {
 
   @override
   Future<UserProfile> getProfile(String userId) async {
+    final id = _requireUserId(userId);
     try {
-      final data = await _apiClient.get('/users/$userId');
+      final data = await _apiClient.get('/users/$id');
       final profile = UserProfile.fromJson(data);
       // Persist the fresh response so we can serve it offline next time.
-      await _writeCache(_cacheKey(userId), data);
+      await _writeCache(_cacheKey(id), data);
       _lastLoadFromCache = false;
       return profile;
     } catch (_) {
       // API call failed (offline / timeout / 5xx) — fall back to cache.
-      final cached = await _readCache(_cacheKey(userId));
+      final cached = await _readCache(_cacheKey(id));
       if (cached != null) {
         _lastLoadFromCache = true;
         return UserProfile.fromJson(cached);
@@ -83,6 +90,7 @@ class ProfileRepositoryImpl implements ProfileRepository {
     String? description,
     List<String>? courses,
   }) async {
+    final id = _requireUserId(userId);
     final results = await Connectivity().checkConnectivity();
     final isOnline = results.any((r) => r != ConnectivityResult.none);
 
@@ -91,13 +99,13 @@ class ProfileRepositoryImpl implements ProfileRepository {
       // later: L1 (ArrayMap, in-memory, fast) and L2 (SharedPreferences,
       // survives a cold restart).
       if (description != null) {
-        _inMemoryPatch[userId] = description;
-        await _writePendingUpdate(userId, description);
+        _inMemoryPatch[id] = description;
+        await _writePendingUpdate(id, description);
       }
 
       // Return an optimistic profile: cache + new description so the UI
       // reflects the change immediately without waiting for connectivity.
-      final cached = await _readCache(_cacheKey(userId));
+      final cached = await _readCache(_cacheKey(id));
       if (cached != null) {
         final patched = Map<String, dynamic>.from(cached);
         if (description != null) patched['description'] = description;
@@ -108,32 +116,34 @@ class ProfileRepositoryImpl implements ProfileRepository {
 
     // Online path — PATCH and re-cache the server response.
     final data = await _apiClient.patch(
-      '/users/$userId',
+      '/users/$id',
       body: {'description': ?description, 'courses': ?courses},
     );
     final profile = UserProfile.fromJson(data);
-    await _writeCache(_cacheKey(userId), data);
+    await _writeCache(_cacheKey(id), data);
     return profile;
   }
 
   /// Sends any pending offline description edit to the server, then clears it.
   @override
   Future<void> syncPendingUpdate(String userId) async {
+    final id = userId.trim();
+    if (id.isEmpty) return;
     try {
       // L1: check the in-memory ArrayMap first — no deserialization needed.
-      final inMemory = _inMemoryPatch[userId];
+      final inMemory = _inMemoryPatch[id];
       if (inMemory != null) {
-        await _apiClient.patch('/users/$userId', body: {'description': inMemory});
-        _inMemoryPatch.remove(userId);
+        await _apiClient.patch('/users/$id', body: {'description': inMemory});
+        _inMemoryPatch.remove(id);
         final prefs = await SharedPreferences.getInstance();
-        await prefs.remove(_pendingKey(userId));
+        await prefs.remove(_pendingKey(id));
         return;
       }
 
       // L2: L1 missed (app was restarted between edit and reconnect) — fall
       // back to SharedPreferences.
       final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_pendingKey(userId));
+      final raw = prefs.getString(_pendingKey(id));
       if (raw == null) return;
 
       final update = jsonDecode(raw) as Map<String, dynamic>;
@@ -141,10 +151,10 @@ class ProfileRepositoryImpl implements ProfileRepository {
       if (description == null) return;
 
       await _apiClient.patch(
-        '/users/$userId',
+        '/users/$id',
         body: {'description': description},
       );
-      await prefs.remove(_pendingKey(userId));
+      await prefs.remove(_pendingKey(id));
     } catch (_) {
       // Sync failed — leave both layers in place; retry on next connectivity event.
     }
@@ -152,9 +162,11 @@ class ProfileRepositoryImpl implements ProfileRepository {
 
   @override
   Future<bool> hasPendingUpdate(String userId) async {
+    final id = userId.trim();
+    if (id.isEmpty) return false;
     try {
       final prefs = await SharedPreferences.getInstance();
-      return prefs.containsKey(_pendingKey(userId));
+      return prefs.containsKey(_pendingKey(id));
     } catch (_) {
       return false;
     }

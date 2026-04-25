@@ -1,14 +1,18 @@
+import 'dart:async';
+
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_text_styles.dart';
 import '../../../../core/network/api_client.dart';
+import '../../data/repositories/analytics_repository_impl.dart';
+import '../../data/repositories/session_repository_impl.dart';
+import '../../data/repositories/student_tutoring_repository_impl.dart';
 import '../../domain/entities/course_entity.dart';
 import '../../domain/entities/session_entity.dart';
 import '../../domain/entities/tutor_entity.dart';
-import '../../domain/repositories/analytics_repository.dart';
-import '../../data/repositories/analytics_repository_impl.dart';
+import '../../domain/repositories/student_tutoring_repository.dart';
 import '../widgets/tutor_carousel_card.dart';
 import '../widgets/booking_bottom_sheet.dart';
 
@@ -32,58 +36,101 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
   List<TutorEntity>? _tutors;
   bool _goToTutorLoaded = false;
   TutorEntity? _goToTutor;
-  late final AnalyticsRepository _repo;
-  // True when the tutor list was served from the Hive cache (device offline).
+  bool _goToTutorFromCache = false;
+  DateTime? _goToTutorLastUpdated;
+  late final StudentTutoringRepository _tutoringRepo;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
+  bool _isOffline = false;
+  /// True when the tutor list came from Hive fallback (see [StudentTutoringRepositoryImpl]).
   bool _tutorsFromCache = false;
 
   @override
   void initState() {
     super.initState();
-    _repo = AnalyticsRepositoryImpl(ApiClient());
-    _loadTutors(_repo);
-    if (widget.studentId.isNotEmpty) _loadGoToTutor(_repo);
+    final client = ApiClient();
+    _tutoringRepo = StudentTutoringRepositoryImpl(
+      AnalyticsRepositoryImpl(client),
+      SessionRepositoryImpl(client),
+      client,
+    );
+    _initConnectivity();
+    _loadTutors();
+    if (widget.studentId.isNotEmpty) _loadGoToTutor();
   }
 
-  Future<void> _loadTutors(AnalyticsRepository repo) async {
-    // Check connectivity before the fetch so we know whether any data
-    // that comes back must have been served from the Hive cache.
-    final results = await Connectivity().checkConnectivity();
-    final isOnline = results.any((r) => r != ConnectivityResult.none);
+  Future<void> _initConnectivity() async {
+    final initial = await Connectivity().checkConnectivity();
+    if (!mounted) return;
+    setState(() => _isOffline = initial.every((r) => r == ConnectivityResult.none));
+    _connectivitySub = Connectivity().onConnectivityChanged.listen((results) {
+      if (!mounted) return;
+      setState(() => _isOffline = results.every((r) => r == ConnectivityResult.none));
+    });
+  }
 
+  Future<void> _loadTutors() async {
     try {
-      final tutors = await repo.getAvailableTutors(widget.course.id);
+      final result = await _tutoringRepo.getAvailableTutorsNext4Hours(
+        widget.course.id,
+      );
       if (mounted) {
         setState(() {
-          _tutors = tutors;
-          // If we were offline but still got tutors, they came from Hive.
-          _tutorsFromCache = !isOnline && tutors.isNotEmpty;
+          _tutors = result.data;
+          _tutorsFromCache = result.isFromCache;
+          // Heuristic: if remote path succeeds (not cache fallback), we have
+          // effective connectivity even if the OS network callback lags.
+          if (!result.isFromCache) _isOffline = false;
         });
-        repo.trackCarouselEvent(
+        await _tutoringRepo.trackCarouselEvent(
           'results_shown',
           widget.course.id,
-          resultCount: tutors.length,
+          resultCount: result.data.length,
         );
       }
     } catch (_) {
-      if (mounted) setState(() => _tutors = []);
+      if (mounted) {
+        setState(() {
+          _tutors = [];
+          _tutorsFromCache = false;
+          // Direct UX fallback: treat request failure as offline so the banner
+          // appears even when Wi-Fi is connected but internet is unavailable.
+          _isOffline = true;
+        });
+      }
     }
   }
 
-  Future<void> _loadGoToTutor(AnalyticsRepository repo) async {
+  Future<void> _loadGoToTutor() async {
     try {
-      final tutor = await repo.getReturningTutor(
+      final result = await _tutoringRepo.getGoToTutor(
         widget.studentId,
         widget.course.id,
       );
       if (mounted) {
         setState(() {
-          _goToTutor = tutor;
+          _goToTutor = result.data;
+          _goToTutorFromCache = result.isFromCache;
+          _goToTutorLastUpdated = result.lastUpdated;
           _goToTutorLoaded = true;
         });
       }
     } catch (_) {
-      if (mounted) setState(() => _goToTutorLoaded = true);
+      if (mounted) {
+        setState(() {
+          _goToTutorFromCache = false;
+          _goToTutorLastUpdated = null;
+          _goToTutorLoaded = true;
+          // Same rationale as _loadTutors: failed fetch => likely offline path.
+          _isOffline = true;
+        });
+      }
     }
+  }
+
+  @override
+  void dispose() {
+    _connectivitySub?.cancel();
+    super.dispose();
   }
 
   @override
@@ -133,6 +180,32 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
                 _InfoRow('Faculty', widget.course.faculty),
               ],
             ),
+            if (_isOffline) ...[
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade50,
+                  border: Border.all(color: Colors.orange.shade300),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.wifi_off, size: 16, color: Colors.orange.shade700),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Application offline, showing cached data.',
+                        style: AppTextStyles.itemSubtitle.copyWith(
+                          color: Colors.orange.shade700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
 
             if (_goToTutorLoaded && _goToTutor != null) ...[
               const SizedBox(height: 24),
@@ -141,39 +214,41 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
                 studentId: widget.studentId,
                 courseId: widget.course.id,
                 existingSessions: widget.existingSessions,
+                fromCache: _goToTutorFromCache || _isOffline,
+                lastUpdated: _goToTutorLastUpdated,
               ),
             ],
 
-            if (_tutors == null || _tutors!.isNotEmpty) ...[
-              const SizedBox(height: 28),
-              _TutorSection(
-                tutors: _tutors,
-                fromCache: _tutorsFromCache,
-                studentId: widget.studentId,
-                courseId: widget.course.id,
-                existingSessions: widget.existingSessions,
-                onTutorTapped: (tutor) {
-                  final countdown = tutor.nextSlotStart
-                      ?.difference(DateTime.now())
-                      .inMinutes;
-                  _repo.trackCarouselEvent(
-                    'tutor_clicked',
-                    widget.course.id,
-                    tutorId: tutor.id,
-                    tutorRating: tutor.rating,
-                    countdownMinutes: countdown,
-                  );
-                },
-                onTutorBooked: (tutor) {
-                  _repo.trackCarouselEvent(
-                    'booking_completed',
-                    widget.course.id,
-                    tutorId: tutor.id,
-                    tutorRating: tutor.rating,
-                  );
-                },
-              ),
-            ],
+            // Always show the carousel section so empty lists and errors still
+            // render a heading + feedback (previously `[]` hid the whole block).
+            const SizedBox(height: 28),
+            _TutorSection(
+              tutors: _tutors,
+              fromCache: _tutorsFromCache || _isOffline,
+              studentId: widget.studentId,
+              courseId: widget.course.id,
+              existingSessions: widget.existingSessions,
+              onTutorTapped: (tutor) {
+                final countdown = tutor.nextSlotStart
+                    ?.difference(DateTime.now())
+                    .inMinutes;
+                _tutoringRepo.trackCarouselEvent(
+                  'tutor_clicked',
+                  widget.course.id,
+                  tutorId: tutor.id,
+                  tutorRating: tutor.rating,
+                  countdownMinutes: countdown,
+                );
+              },
+              onTutorBooked: (tutor) {
+                _tutoringRepo.trackCarouselEvent(
+                  'booking_completed',
+                  widget.course.id,
+                  tutorId: tutor.id,
+                  tutorRating: tutor.rating,
+                );
+              },
+            ),
 
             const SizedBox(height: 16),
           ],
@@ -270,6 +345,15 @@ class _TutorSection extends StatelessWidget {
               ),
             ),
           )
+        else if (tutors!.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: Text(
+              'No tutors are available in the next 4 hours for this course. '
+              'If you are offline, reconnect to refresh or review cached data.',
+              style: AppTextStyles.itemSubtitle,
+            ),
+          )
         else
           SizedBox(
             height: 138,
@@ -290,7 +374,7 @@ class _TutorSection extends StatelessWidget {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text(
-                            'Ya tienes una sesión pendiente con ${tutor.name}.',
+                            'You already have a pending session with ${tutor.name}.',
                           ),
                           behavior: SnackBarBehavior.floating,
                         ),
@@ -328,13 +412,24 @@ class _GoToTutorSection extends StatelessWidget {
   final String studentId;
   final String courseId;
   final List<SessionEntity> existingSessions;
+  final bool fromCache;
+  final DateTime? lastUpdated;
 
   const _GoToTutorSection({
     required this.tutor,
     required this.studentId,
     required this.courseId,
     required this.existingSessions,
+    this.fromCache = false,
+    this.lastUpdated,
   });
+
+  String _formatCacheTime(DateTime when) {
+    final local = when.toLocal();
+    final hh = local.hour.toString().padLeft(2, '0');
+    final mm = local.minute.toString().padLeft(2, '0');
+    return '$hh:$mm';
+  }
 
   String _slotRange() {
     final start = tutor.nextSlotStart?.toLocal();
@@ -407,6 +502,23 @@ class _GoToTutorSection extends StatelessWidget {
           'Your most-booked tutor for this course',
           style: AppTextStyles.itemSubtitle,
         ),
+        if (fromCache) ...[
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Icon(Icons.cloud_off, size: 13, color: Colors.orange.shade600),
+              const SizedBox(width: 4),
+              Text(
+                lastUpdated != null
+                    ? 'Showing cached information since: ${_formatCacheTime(lastUpdated!)}'
+                    : 'Showing cached information',
+                style: AppTextStyles.itemSubtitle.copyWith(
+                  color: Colors.orange.shade600,
+                ),
+              ),
+            ],
+          ),
+        ],
         const SizedBox(height: 14),
         GestureDetector(
           onTap: () async {
@@ -417,7 +529,7 @@ class _GoToTutorSection extends StatelessWidget {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text(
-                    'Ya tienes una sesión pendiente con ${tutor.name}.',
+                    'You already have a pending session with ${tutor.name}.',
                   ),
                   behavior: SnackBarBehavior.floating,
                 ),
