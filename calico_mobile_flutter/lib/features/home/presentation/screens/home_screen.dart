@@ -170,6 +170,22 @@ class _HomeScreenState extends State<HomeScreen> {
         selectedIndex: _selectedTab,
         onTap: (i) {
           if (i == 1) {
+            if (widget.studentId.trim().isEmpty) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Guest mode: please sign in to view your profile.',
+                    style: AppTextStyles.itemSubtitle.copyWith(
+                      color: Colors.white,
+                    ),
+                  ),
+                  backgroundColor: Colors.blueGrey,
+                  behavior: SnackBarBehavior.floating,
+                  margin: const EdgeInsets.all(16),
+                ),
+              );
+              return;
+            }
             Navigator.push(
               context,
               MaterialPageRoute(
