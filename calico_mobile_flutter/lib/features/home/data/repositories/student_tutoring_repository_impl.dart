@@ -54,6 +54,7 @@ class StudentTutoringRepositoryImpl implements StudentTutoringRepository {
     String studentId,
     String courseId,
   ) async {
+    // L1: [AnalyticsRepositoryImpl] LRU + TTL on getReturningTutor. L2: SQLite.
     try {
       final tutor = await _analytics.getReturningTutor(studentId, courseId);
       final now = DateTime.now();
@@ -84,6 +85,7 @@ class StudentTutoringRepositoryImpl implements StudentTutoringRepository {
       return const CachedResult<List<SessionEntity>>(data: <SessionEntity>[]);
     }
 
+    // L1: [SessionRepositoryImpl] LRU + TTL on getStudentSessions. L2: SQLite.
     try {
       final list = await _sessions.getStudentSessions(studentId);
       final now = DateTime.now();
