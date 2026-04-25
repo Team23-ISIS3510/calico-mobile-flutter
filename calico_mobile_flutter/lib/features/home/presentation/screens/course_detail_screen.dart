@@ -1,14 +1,15 @@
-import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_text_styles.dart';
 import '../../../../core/network/api_client.dart';
+import '../../data/repositories/analytics_repository_impl.dart';
+import '../../data/repositories/session_repository_impl.dart';
+import '../../data/repositories/student_tutoring_repository_impl.dart';
 import '../../domain/entities/course_entity.dart';
 import '../../domain/entities/session_entity.dart';
 import '../../domain/entities/tutor_entity.dart';
-import '../../domain/repositories/analytics_repository.dart';
-import '../../data/repositories/analytics_repository_impl.dart';
+import '../../domain/repositories/student_tutoring_repository.dart';
 import '../widgets/tutor_carousel_card.dart';
 import '../widgets/booking_bottom_sheet.dart';
 
@@ -32,52 +33,58 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
   List<TutorEntity>? _tutors;
   bool _goToTutorLoaded = false;
   TutorEntity? _goToTutor;
-  late final AnalyticsRepository _repo;
-  // True when the tutor list was served from the Hive cache (device offline).
+  late final StudentTutoringRepository _tutoringRepo;
+  /// True when the tutor list came from Hive fallback (see [StudentTutoringRepositoryImpl]).
   bool _tutorsFromCache = false;
 
   @override
   void initState() {
     super.initState();
-    _repo = AnalyticsRepositoryImpl(ApiClient());
-    _loadTutors(_repo);
-    if (widget.studentId.isNotEmpty) _loadGoToTutor(_repo);
+    final client = ApiClient();
+    _tutoringRepo = StudentTutoringRepositoryImpl(
+      AnalyticsRepositoryImpl(client),
+      SessionRepositoryImpl(client),
+      client,
+    );
+    _loadTutors();
+    if (widget.studentId.isNotEmpty) _loadGoToTutor();
   }
 
-  Future<void> _loadTutors(AnalyticsRepository repo) async {
-    // Check connectivity before the fetch so we know whether any data
-    // that comes back must have been served from the Hive cache.
-    final results = await Connectivity().checkConnectivity();
-    final isOnline = results.any((r) => r != ConnectivityResult.none);
-
+  Future<void> _loadTutors() async {
     try {
-      final tutors = await repo.getAvailableTutors(widget.course.id);
+      final result = await _tutoringRepo.getAvailableTutorsNext4Hours(
+        widget.course.id,
+      );
       if (mounted) {
         setState(() {
-          _tutors = tutors;
-          // If we were offline but still got tutors, they came from Hive.
-          _tutorsFromCache = !isOnline && tutors.isNotEmpty;
+          _tutors = result.data;
+          _tutorsFromCache = result.isFromCache;
         });
-        repo.trackCarouselEvent(
+        await _tutoringRepo.trackCarouselEvent(
           'results_shown',
           widget.course.id,
-          resultCount: tutors.length,
+          resultCount: result.data.length,
         );
       }
     } catch (_) {
-      if (mounted) setState(() => _tutors = []);
+      if (mounted) {
+        setState(() {
+          _tutors = [];
+          _tutorsFromCache = false;
+        });
+      }
     }
   }
 
-  Future<void> _loadGoToTutor(AnalyticsRepository repo) async {
+  Future<void> _loadGoToTutor() async {
     try {
-      final tutor = await repo.getReturningTutor(
+      final result = await _tutoringRepo.getGoToTutor(
         widget.studentId,
         widget.course.id,
       );
       if (mounted) {
         setState(() {
-          _goToTutor = tutor;
+          _goToTutor = result.data;
           _goToTutorLoaded = true;
         });
       }
@@ -144,36 +151,36 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
               ),
             ],
 
-            if (_tutors == null || _tutors!.isNotEmpty) ...[
-              const SizedBox(height: 28),
-              _TutorSection(
-                tutors: _tutors,
-                fromCache: _tutorsFromCache,
-                studentId: widget.studentId,
-                courseId: widget.course.id,
-                existingSessions: widget.existingSessions,
-                onTutorTapped: (tutor) {
-                  final countdown = tutor.nextSlotStart
-                      ?.difference(DateTime.now())
-                      .inMinutes;
-                  _repo.trackCarouselEvent(
-                    'tutor_clicked',
-                    widget.course.id,
-                    tutorId: tutor.id,
-                    tutorRating: tutor.rating,
-                    countdownMinutes: countdown,
-                  );
-                },
-                onTutorBooked: (tutor) {
-                  _repo.trackCarouselEvent(
-                    'booking_completed',
-                    widget.course.id,
-                    tutorId: tutor.id,
-                    tutorRating: tutor.rating,
-                  );
-                },
-              ),
-            ],
+            // Always show the carousel section so empty lists and errors still
+            // render a heading + feedback (previously `[]` hid the whole block).
+            const SizedBox(height: 28),
+            _TutorSection(
+              tutors: _tutors,
+              fromCache: _tutorsFromCache,
+              studentId: widget.studentId,
+              courseId: widget.course.id,
+              existingSessions: widget.existingSessions,
+              onTutorTapped: (tutor) {
+                final countdown = tutor.nextSlotStart
+                    ?.difference(DateTime.now())
+                    .inMinutes;
+                _tutoringRepo.trackCarouselEvent(
+                  'tutor_clicked',
+                  widget.course.id,
+                  tutorId: tutor.id,
+                  tutorRating: tutor.rating,
+                  countdownMinutes: countdown,
+                );
+              },
+              onTutorBooked: (tutor) {
+                _tutoringRepo.trackCarouselEvent(
+                  'booking_completed',
+                  widget.course.id,
+                  tutorId: tutor.id,
+                  tutorRating: tutor.rating,
+                );
+              },
+            ),
 
             const SizedBox(height: 16),
           ],
@@ -268,6 +275,15 @@ class _TutorSection extends StatelessWidget {
                   color: AppColors.primary,
                 ),
               ),
+            ),
+          )
+        else if (tutors!.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: Text(
+              'No hay tutores con disponibilidad en las próximas 4 horas para este curso. '
+              'Si estás sin conexión, conecta para actualizar o revisa si hay datos en caché.',
+              style: AppTextStyles.itemSubtitle,
             ),
           )
         else
