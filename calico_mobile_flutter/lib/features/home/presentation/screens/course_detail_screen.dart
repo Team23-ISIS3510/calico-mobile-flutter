@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/constants/app_colors.dart';
@@ -33,7 +36,11 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
   List<TutorEntity>? _tutors;
   bool _goToTutorLoaded = false;
   TutorEntity? _goToTutor;
+  bool _goToTutorFromCache = false;
+  DateTime? _goToTutorLastUpdated;
   late final StudentTutoringRepository _tutoringRepo;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
+  bool _isOffline = false;
   /// True when the tutor list came from Hive fallback (see [StudentTutoringRepositoryImpl]).
   bool _tutorsFromCache = false;
 
@@ -46,8 +53,19 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
       SessionRepositoryImpl(client),
       client,
     );
+    _initConnectivity();
     _loadTutors();
     if (widget.studentId.isNotEmpty) _loadGoToTutor();
+  }
+
+  Future<void> _initConnectivity() async {
+    final initial = await Connectivity().checkConnectivity();
+    if (!mounted) return;
+    setState(() => _isOffline = initial.every((r) => r == ConnectivityResult.none));
+    _connectivitySub = Connectivity().onConnectivityChanged.listen((results) {
+      if (!mounted) return;
+      setState(() => _isOffline = results.every((r) => r == ConnectivityResult.none));
+    });
   }
 
   Future<void> _loadTutors() async {
@@ -85,12 +103,26 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
       if (mounted) {
         setState(() {
           _goToTutor = result.data;
+          _goToTutorFromCache = result.isFromCache;
+          _goToTutorLastUpdated = result.lastUpdated;
           _goToTutorLoaded = true;
         });
       }
     } catch (_) {
-      if (mounted) setState(() => _goToTutorLoaded = true);
+      if (mounted) {
+        setState(() {
+          _goToTutorFromCache = false;
+          _goToTutorLastUpdated = null;
+          _goToTutorLoaded = true;
+        });
+      }
     }
+  }
+
+  @override
+  void dispose() {
+    _connectivitySub?.cancel();
+    super.dispose();
   }
 
   @override
@@ -140,6 +172,32 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
                 _InfoRow('Faculty', widget.course.faculty),
               ],
             ),
+            if (_isOffline) ...[
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade50,
+                  border: Border.all(color: Colors.orange.shade300),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.wifi_off, size: 16, color: Colors.orange.shade700),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Aplicación sin conexión, datos se muestran de caché.',
+                        style: AppTextStyles.itemSubtitle.copyWith(
+                          color: Colors.orange.shade700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
 
             if (_goToTutorLoaded && _goToTutor != null) ...[
               const SizedBox(height: 24),
@@ -148,6 +206,8 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
                 studentId: widget.studentId,
                 courseId: widget.course.id,
                 existingSessions: widget.existingSessions,
+                fromCache: _goToTutorFromCache || _isOffline,
+                lastUpdated: _goToTutorLastUpdated,
               ),
             ],
 
@@ -156,7 +216,7 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
             const SizedBox(height: 28),
             _TutorSection(
               tutors: _tutors,
-              fromCache: _tutorsFromCache,
+              fromCache: _tutorsFromCache || _isOffline,
               studentId: widget.studentId,
               courseId: widget.course.id,
               existingSessions: widget.existingSessions,
@@ -344,13 +404,24 @@ class _GoToTutorSection extends StatelessWidget {
   final String studentId;
   final String courseId;
   final List<SessionEntity> existingSessions;
+  final bool fromCache;
+  final DateTime? lastUpdated;
 
   const _GoToTutorSection({
     required this.tutor,
     required this.studentId,
     required this.courseId,
     required this.existingSessions,
+    this.fromCache = false,
+    this.lastUpdated,
   });
+
+  String _formatCacheTime(DateTime when) {
+    final local = when.toLocal();
+    final hh = local.hour.toString().padLeft(2, '0');
+    final mm = local.minute.toString().padLeft(2, '0');
+    return '$hh:$mm';
+  }
 
   String _slotRange() {
     final start = tutor.nextSlotStart?.toLocal();
@@ -423,6 +494,23 @@ class _GoToTutorSection extends StatelessWidget {
           'Your most-booked tutor for this course',
           style: AppTextStyles.itemSubtitle,
         ),
+        if (fromCache) ...[
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Icon(Icons.cloud_off, size: 13, color: Colors.orange.shade600),
+              const SizedBox(width: 4),
+              Text(
+                lastUpdated != null
+                    ? 'Mostrando información desde caché desde: ${_formatCacheTime(lastUpdated!)}'
+                    : 'Mostrando información desde caché',
+                style: AppTextStyles.itemSubtitle.copyWith(
+                  color: Colors.orange.shade600,
+                ),
+              ),
+            ],
+          ),
+        ],
         const SizedBox(height: 14),
         GestureDetector(
           onTap: () async {
