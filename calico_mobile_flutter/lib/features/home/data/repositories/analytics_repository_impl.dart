@@ -1,25 +1,4 @@
-// WHY HIVE FOR THE TUTOR CAROUSEL?
-// The tutor list is fetched on every CourseDetailScreen open and is moderately
-// sized (5–20 objects).  Hive is a better fit than SharedPreferences because:
-//   - Data is partitioned per-courseId — each key is independent
-//   - Hive stores raw bytes, faster reads than parsing JSON from prefs
-//   - No SQL schema needed — the data shape matches our existing fromJson()
-//
-// TRADE-OFF vs SQLite: Hive has no relational queries, but we only need a
-// simple key (courseId) → value lookup.
-//
-// CACHE EXPIRY: 30 minutes.  Tutor availability changes frequently, so we
-// balance freshness against unnecessary network round-trips.
-//
-// STORED FORMAT per key:
-//   { "cachedAt": "<ISO-8601>", "tutors": [ <raw API objects> ] }
-// Raw API objects are stored (not entities) so AvailableTutorModel.fromJson()
-// reconstructs them without needing a Hive TypeAdapter.
-
-import 'dart:convert';
-
-import 'package:hive_flutter/hive_flutter.dart';
-
+import '../../../../core/cache/lru_cache.dart';
 import '../../../../core/network/api_client.dart';
 import '../../domain/entities/tutor_entity.dart';
 import '../../domain/repositories/analytics_repository.dart';
@@ -28,8 +7,25 @@ import '../models/available_tutor_model.dart';
 class AnalyticsRepositoryImpl implements AnalyticsRepository {
   final ApiClient _apiClient;
 
-  static const String _boxName = 'recommended_tutors';
-  static const Duration _cacheTtl = Duration(minutes: 30);
+  // LRU cache: tutor lists keyed by courseId.
+  //
+  // maxSize=10 — one slot per course; fits the full catalogue with no eviction
+  // under normal use, so every course detail screen gets a fast in-memory hit
+  // on re-visit within the same session.
+  //
+  // ttl=5 min — tutor availability (next slot, booking count) changes as other
+  // students book sessions. Five minutes is a reasonable balance: the data
+  // stays fresh enough to show accurate slot counts while still cutting most
+  // repeated network calls during a single booking flow.
+  //
+  // Static so the cache survives widget rebuilds and screen navigation. A new
+  // AnalyticsRepositoryImpl instance is created every time the home or course-
+  // detail screen initialises; without static the cache would be discarded on
+  // every navigation pop.
+  static final LRUCache<String, List<TutorEntity>> _tutorCache = LRUCache(
+    maxSize: 10,
+    ttl: const Duration(minutes: 5),
+  );
 
   const AnalyticsRepositoryImpl(this._apiClient);
 
@@ -45,6 +41,24 @@ class AnalyticsRepositoryImpl implements AnalyticsRepository {
     final raw = data['tutor'];
     if (raw == null) return null;
     return AvailableTutorModel.fromJson(raw as Map<String, dynamic>).toEntity();
+  }
+
+  @override
+  Future<List<TutorEntity>> getAvailableTutors(String courseId) async {
+    final cached = _tutorCache.get(courseId);
+    if (cached != null) return cached;
+
+    final data = await _apiClient.get(
+      '/analytics/bookable-tutors',
+      query: {'course': courseId},
+    );
+    final raw = data['tutors'] as List<dynamic>? ?? [];
+    final tutors = raw
+        .whereType<Map<String, dynamic>>()
+        .map((json) => AvailableTutorModel.fromJson(json).toEntity())
+        .toList();
+    _tutorCache.put(courseId, tutors);
+    return tutors;
   }
 
   @override
@@ -71,70 +85,5 @@ class AnalyticsRepositoryImpl implements AnalyticsRepository {
     } catch (_) {
       // Fire-and-forget: never let tracking break the UI.
     }
-  }
-
-  @override
-  Future<List<TutorEntity>> getAvailableTutors(String courseId) async {
-    final box = Hive.box<String>(_boxName);
-
-    // ── 1. Check Hive cache ───────────────────────────────────────────────
-    final cached = box.get(courseId);
-    if (cached != null) {
-      try {
-        final entry = jsonDecode(cached) as Map<String, dynamic>;
-        final cachedAt = DateTime.parse(entry['cachedAt'] as String);
-
-        if (DateTime.now().difference(cachedAt) < _cacheTtl) {
-          // Cache is still fresh — return without hitting the network.
-          return _parseRawList(entry['tutors'] as List<dynamic>);
-        }
-      } catch (_) {
-        // Corrupt cache entry — fall through to a fresh fetch.
-      }
-    }
-
-    // ── 2. Fetch from API ─────────────────────────────────────────────────
-    try {
-      final data = await _apiClient.get(
-        '/analytics/bookable-tutors',
-        query: {'course': courseId},
-      );
-      final rawList = (data['tutors'] as List<dynamic>? ?? [])
-          .whereType<Map<String, dynamic>>()
-          .toList();
-
-      // ── 3. Save raw response to Hive ──────────────────────────────────
-      try {
-        await box.put(
-          courseId,
-          jsonEncode({
-            'cachedAt': DateTime.now().toIso8601String(),
-            'tutors': rawList,
-          }),
-        );
-      } catch (_) {
-        // Cache write failure must never block the UI.
-      }
-
-      return rawList
-          .map((j) => AvailableTutorModel.fromJson(j).toEntity())
-          .toList();
-    } catch (_) {
-      // ── 4. Offline fallback: return expired cache rather than empty list ──
-      if (cached != null) {
-        try {
-          final entry = jsonDecode(cached) as Map<String, dynamic>;
-          return _parseRawList(entry['tutors'] as List<dynamic>);
-        } catch (_) {}
-      }
-      rethrow;
-    }
-  }
-
-  List<TutorEntity> _parseRawList(List<dynamic> raw) {
-    return raw
-        .whereType<Map<String, dynamic>>()
-        .map((j) => AvailableTutorModel.fromJson(j).toEntity())
-        .toList();
   }
 }

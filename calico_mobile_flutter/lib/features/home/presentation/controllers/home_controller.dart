@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../../../../core/cache/array_map.dart';
 import '../../../../core/local/pending_sessions_database.dart';
 import '../../../../core/utils/course_filter_isolate.dart';
 import '../../domain/entities/course_entity.dart';
@@ -31,6 +32,15 @@ class HomeController extends ChangeNotifier {
   List<SessionEntity> _pendingSessions = [];
   String? _error;
 
+  // ArrayMap<courseId, sessionCount> — built once per loadSessions call and
+  // reused on every recommendedCourses access. ArrayMap is the right fit here
+  // because the collection is small (≤ number of distinct courses, typically
+  // ≤ 10), reads dominate (every build() call reads it, writes happen only
+  // when sessions reload), and the O(log n) binary search is effectively O(1)
+  // for n ≤ 10 — at most 4 comparisons. Null signals the cache is stale and
+  // must be rebuilt before use.
+  ArrayMap<String, int>? _sessionCountCache;
+
   // Tracks the most recent search query to discard stale isolate results.
   String _lastSearchQuery = '';
 
@@ -46,20 +56,24 @@ class HomeController extends ChangeNotifier {
   /// Top 3 courses the student has had the most sessions in.
   List<CourseEntity> get recommendedCourses {
     if (_sessions.isEmpty || _allCourses.isEmpty) return [];
-    final counts = <String, int>{};
+    _sessionCountCache ??= _buildSessionCounts();
+    final courseMap = {for (final c in _allCourses) c.id: c};
+    return (_sessionCountCache!.entries.toList()
+          ..sort((a, b) => b.value.compareTo(a.value)))
+        .take(3)
+        .map((e) => courseMap[e.key])
+        .whereType<CourseEntity>()
+        .toList();
+  }
+
+  ArrayMap<String, int> _buildSessionCounts() {
+    final counts = ArrayMap<String, int>();
     for (final s in _sessions) {
       if (s.courseId != null && s.courseId!.isNotEmpty) {
         counts[s.courseId!] = (counts[s.courseId!] ?? 0) + 1;
       }
     }
-    final sorted = counts.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-    final courseMap = {for (final c in _allCourses) c.id: c};
-    return sorted
-        .take(3)
-        .map((e) => courseMap[e.key])
-        .whereType<CourseEntity>()
-        .toList();
+    return counts;
   }
 
   // ── Status helpers ────────────────────────────────────────────────────────
@@ -101,6 +115,7 @@ class HomeController extends ChangeNotifier {
     _sessions = result.data;
     _sessionsFromCache = result.isFromCache;
     _sessionsLastUpdated = result.lastUpdated;
+    _sessionCountCache = null; // invalidate so recommendedCourses rebuilds
   }
 
   /// Reads all unsynced rows from the local pending_sessions table and
