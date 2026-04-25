@@ -111,6 +111,26 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<void> _refreshAll() async {
+    final client = ApiClient();
+    final connectivity = await Connectivity().checkConnectivity();
+    final isOnline =
+        connectivity.isNotEmpty &&
+        connectivity.any((r) => r != ConnectivityResult.none);
+
+    if (isOnline && widget.studentId.isNotEmpty) {
+      // Best effort: refresh should not fail if sync endpoints are temporarily unavailable.
+      try {
+        await SyncService(client).syncPendingSessions(widget.studentId);
+      } catch (_) {}
+      try {
+        await ProfileRepositoryImpl(client).syncPendingUpdate(widget.studentId);
+      } catch (_) {}
+    }
+
+    await _controller.loadData(widget.studentId);
+  }
+
   @override
   void dispose() {
     _controller.removeListener(_onUpdate);
@@ -163,7 +183,13 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
 
           // ── Scrollable content ──────────────────────────────────────────
-          Expanded(child: _buildBody()),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: _refreshAll,
+              color: AppColors.primary,
+              child: _buildBody(),
+            ),
+          ),
         ],
       ),
       bottomNavigationBar: AppBottomNav(
@@ -202,8 +228,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildBody() {
     if (_controller.isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(color: AppColors.primary),
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: [
+          const SizedBox(height: 120),
+          const Center(
+            child: CircularProgressIndicator(color: AppColors.primary),
+          ),
+        ],
       );
     }
 
@@ -213,38 +245,42 @@ class _HomeScreenState extends State<HomeScreen> {
           : (_controller.error?.trim().isNotEmpty ?? false)
           ? _controller.error!
           : 'No pudimos cargar Inicio en este momento. Intenta de nuevo.';
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.wifi_off, size: 48, color: AppColors.brown),
-              const SizedBox(height: 12),
-              Text(
-                failureMessage,
-                textAlign: TextAlign.center,
-                style: AppTextStyles.itemSubtitle,
-              ),
-              const SizedBox(height: 16),
-              TextButton(
-                onPressed: () => _controller.loadData(widget.studentId),
-                child: Text(
-                  'Retry',
-                  style: AppTextStyles.buttonLabel.copyWith(
-                    color: AppColors.primary,
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.wifi_off, size: 48, color: AppColors.brown),
+                const SizedBox(height: 12),
+                Text(
+                  failureMessage,
+                  textAlign: TextAlign.center,
+                  style: AppTextStyles.itemSubtitle,
+                ),
+                const SizedBox(height: 16),
+                TextButton(
+                  onPressed: () => _controller.loadData(widget.studentId),
+                  child: Text(
+                    'Retry',
+                    style: AppTextStyles.buttonLabel.copyWith(
+                      color: AppColors.primary,
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
+        ],
       );
     }
 
     final recommended = _controller.recommendedCourses;
 
     return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
       children: [
         // ── Recommended for you ──────────────────────────────────────────
         if (widget.studentId.isNotEmpty && recommended.isNotEmpty) ...[

@@ -28,16 +28,40 @@ class BookingBottomSheet extends StatefulWidget {
 }
 
 class _BookingBottomSheetState extends State<BookingBottomSheet> {
+  static const Duration _defaultSessionDuration = Duration(hours: 1);
   bool _isLoading = false;
   bool _booked = false;
   // True when the booking was queued in SQLite because the device was offline.
   bool _savedOffline = false;
   String? _error;
 
+  ({DateTime start, DateTime end}) _bookingWindow() {
+    final start = widget.tutor.nextSlotStart;
+    if (start == null) {
+      throw StateError('Selected tutor has no valid start slot');
+    }
+
+    // Product rule: bookings from this flow reserve a 1-hour session.
+    // If backend analytics sends a wider availability block (e.g. 3h),
+    // we only take the first hour to avoid unrealistic accidental bookings.
+    final blockEnd = widget.tutor.nextSlotEnd;
+    final cappedEnd = start.add(_defaultSessionDuration);
+    final end = blockEnd != null && blockEnd.isBefore(cappedEnd)
+        ? blockEnd
+        : cappedEnd;
+    return (start: start, end: end);
+  }
+
   String _formatSlot() {
-    final start = widget.tutor.nextSlotStart?.toLocal();
-    final end = widget.tutor.nextSlotEnd?.toLocal();
-    if (start == null) return 'No slot available';
+    final DateTime start;
+    final DateTime end;
+    try {
+      final window = _bookingWindow();
+      start = window.start.toLocal();
+      end = window.end.toLocal();
+    } catch (_) {
+      return 'No slot available';
+    }
 
     String fmt(DateTime dt) {
       final h = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
@@ -60,8 +84,7 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
       day = '${start.month}/${start.day}/${start.year}';
     }
 
-    if (end != null) return '$day  ${fmt(start)} – ${fmt(end)}';
-    return '$day  ${fmt(start)}';
+    return '$day  ${fmt(start)} – ${fmt(end)}';
   }
 
   Future<void> _bookNow() async {
@@ -85,6 +108,7 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
 
     if (!isOnline) {
       try {
+        final window = _bookingWindow();
         final db = PendingSessionsDatabase.instance;
         await db
             .into(db.pendingSessions)
@@ -93,8 +117,8 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                 tutorId: widget.tutor.id,
                 studentId: widget.studentId,
                 courseId: widget.courseId,
-                scheduledStart: widget.tutor.nextSlotStart!.toIso8601String(),
-                scheduledEnd: widget.tutor.nextSlotEnd!.toIso8601String(),
+                scheduledStart: window.start.toIso8601String(),
+                scheduledEnd: window.end.toIso8601String(),
                 location: widget.tutor.location,
                 bookingSource: widget.bookingSource,
                 createdAt: DateTime.now(),
@@ -118,6 +142,7 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
 
     // ── Online path: POST directly to the server ─────────────────────────
     try {
+      final window = _bookingWindow();
       final client = ApiClient();
       await client.post(
         '/tutoring-sessions',
@@ -125,8 +150,8 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
           'tutorId': widget.tutor.id,
           'studentId': widget.studentId,
           'courseId': widget.courseId,
-          'scheduledStart': widget.tutor.nextSlotStart!.toIso8601String(),
-          'scheduledEnd': widget.tutor.nextSlotEnd!.toIso8601String(),
+          'scheduledStart': window.start.toIso8601String(),
+          'scheduledEnd': window.end.toIso8601String(),
           'location': widget.tutor.location,
           'requiresApproval': false,
           'bookingSource': widget.bookingSource,
@@ -313,7 +338,7 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                   children: [
                     Text('Price', style: AppTextStyles.itemSubtitle),
                     Text(
-                      '\$${widget.tutor.hourlyRate!.toStringAsFixed(0)}/hr',
+                      '\$${widget.tutor.hourlyRate!.toStringAsFixed(0)} (1h)',
                       style: AppTextStyles.itemTitle,
                     ),
                   ],
