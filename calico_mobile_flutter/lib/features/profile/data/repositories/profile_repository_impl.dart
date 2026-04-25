@@ -17,6 +17,7 @@ import 'dart:convert';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../../core/cache/array_map.dart';
 import '../../../../core/network/api_client.dart';
 import '../../domain/models/user_profile.dart';
 import '../../domain/repositories/profile_repository.dart';
@@ -27,6 +28,23 @@ class ProfileRepositoryImpl implements ProfileRepository {
   ProfileRepositoryImpl(this._apiClient);
 
   bool _lastLoadFromCache = false;
+
+  // In-memory L1 layer for pending offline description edits.
+  //
+  // ArrayMap<userId, pendingDescription> — one entry per user who edited their
+  // profile while offline. The collection is always tiny (≤ 1 active user on a
+  // personal device), so ArrayMap's O(log n) binary search costs ≤ 1 comparison
+  // in practice and its zero fixed-overhead layout beats HashMap's 128-byte
+  // minimum bucket array.
+  //
+  // Two-layer strategy:
+  //   L1 — this ArrayMap: checked first during sync. No deserialization cost;
+  //         survives the session but not an app restart.
+  //   L2 — SharedPreferences (key: pending_profile_update_<userId>): written
+  //         in parallel so the edit survives a cold restart. Read only when L1
+  //         misses (i.e. the app was killed and relaunched between the offline
+  //         edit and the reconnection).
+  static final ArrayMap<String, String> _inMemoryPatch = ArrayMap();
 
   @override
   bool get lastLoadFromCache => _lastLoadFromCache;
@@ -69,8 +87,13 @@ class ProfileRepositoryImpl implements ProfileRepository {
     final isOnline = results.any((r) => r != ConnectivityResult.none);
 
     if (!isOnline) {
-      // Save the pending edit so syncPendingUpdate can POST it later.
-      if (description != null) await _writePendingUpdate(userId, description);
+      // Save the pending edit to both layers so syncPendingUpdate can POST it
+      // later: L1 (ArrayMap, in-memory, fast) and L2 (SharedPreferences,
+      // survives a cold restart).
+      if (description != null) {
+        _inMemoryPatch[userId] = description;
+        await _writePendingUpdate(userId, description);
+      }
 
       // Return an optimistic profile: cache + new description so the UI
       // reflects the change immediately without waiting for connectivity.
@@ -97,6 +120,18 @@ class ProfileRepositoryImpl implements ProfileRepository {
   @override
   Future<void> syncPendingUpdate(String userId) async {
     try {
+      // L1: check the in-memory ArrayMap first — no deserialization needed.
+      final inMemory = _inMemoryPatch[userId];
+      if (inMemory != null) {
+        await _apiClient.patch('/users/$userId', body: {'description': inMemory});
+        _inMemoryPatch.remove(userId);
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove(_pendingKey(userId));
+        return;
+      }
+
+      // L2: L1 missed (app was restarted between edit and reconnect) — fall
+      // back to SharedPreferences.
       final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getString(_pendingKey(userId));
       if (raw == null) return;
@@ -111,7 +146,7 @@ class ProfileRepositoryImpl implements ProfileRepository {
       );
       await prefs.remove(_pendingKey(userId));
     } catch (_) {
-      // Sync failed — leave the key in place; retry on next connectivity event.
+      // Sync failed — leave both layers in place; retry on next connectivity event.
     }
   }
 
