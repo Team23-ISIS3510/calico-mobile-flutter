@@ -188,7 +188,7 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Aplicación sin conexión, datos se muestran de caché.',
+                        'Application offline, showing cached data.',
                         style: AppTextStyles.itemSubtitle.copyWith(
                           color: Colors.orange.shade700,
                         ),
@@ -341,8 +341,8 @@ class _TutorSection extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 16),
             child: Text(
-              'No hay tutores con disponibilidad en las próximas 4 horas para este curso. '
-              'Si estás sin conexión, conecta para actualizar o revisa si hay datos en caché.',
+              'No tutors are available in the next 4 hours for this course. '
+              'If you are offline, reconnect to refresh or review cached data.',
               style: AppTextStyles.itemSubtitle,
             ),
           )
@@ -366,7 +366,7 @@ class _TutorSection extends StatelessWidget {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text(
-                            'Ya tienes una sesión pendiente con ${tutor.name}.',
+                            'You already have a pending session with ${tutor.name}.',
                           ),
                           behavior: SnackBarBehavior.floating,
                         ),
@@ -502,8 +502,8 @@ class _GoToTutorSection extends StatelessWidget {
               const SizedBox(width: 4),
               Text(
                 lastUpdated != null
-                    ? 'Mostrando información desde caché desde: ${_formatCacheTime(lastUpdated!)}'
-                    : 'Mostrando información desde caché',
+                    ? 'Showing cached information since: ${_formatCacheTime(lastUpdated!)}'
+                    : 'Showing cached information',
                 style: AppTextStyles.itemSubtitle.copyWith(
                   color: Colors.orange.shade600,
                 ),
@@ -521,7 +521,7 @@ class _GoToTutorSection extends StatelessWidget {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text(
-                    'Ya tienes una sesión pendiente con ${tutor.name}.',
+                    'You already have a pending session with ${tutor.name}.',
                   ),
                   behavior: SnackBarBehavior.floating,
                 ),
