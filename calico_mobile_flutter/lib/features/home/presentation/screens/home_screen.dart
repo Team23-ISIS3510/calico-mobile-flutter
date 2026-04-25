@@ -192,6 +192,11 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     if (_controller.status == HomeStatus.failure) {
+      final failureMessage = _isOffline
+          ? 'Sin conexión. No pudimos actualizar Inicio, pero puedes reintentar cuando vuelvas a estar en línea.'
+          : (_controller.error?.trim().isNotEmpty ?? false)
+          ? _controller.error!
+          : 'No pudimos cargar Inicio en este momento. Intenta de nuevo.';
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -201,7 +206,7 @@ class _HomeScreenState extends State<HomeScreen> {
               const Icon(Icons.wifi_off, size: 48, color: AppColors.brown),
               const SizedBox(height: 12),
               Text(
-                _controller.error ?? 'Something went wrong',
+                failureMessage,
                 textAlign: TextAlign.center,
                 style: AppTextStyles.itemSubtitle,
               ),

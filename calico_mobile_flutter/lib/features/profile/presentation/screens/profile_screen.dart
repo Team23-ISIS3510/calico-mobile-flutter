@@ -81,10 +81,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 child: CircularProgressIndicator(color: AppColors.primary),
               )
             : _controller.profile == null
-            ? Center(
-                child: Text(
-                  'Could not load profile',
-                  style: AppTextStyles.itemSubtitle,
+            ? Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.person_off, size: 48, color: AppColors.brown),
+                    const SizedBox(height: 12),
+                    Text(
+                      _controller.errorMessage?.trim().isNotEmpty == true
+                          ? _controller.errorMessage!
+                          : 'No pudimos cargar tu perfil. Revisa tu conexión e inténtalo de nuevo.',
+                      textAlign: TextAlign.center,
+                      style: AppTextStyles.itemSubtitle,
+                    ),
+                    const SizedBox(height: 16),
+                    TextButton(
+                      onPressed: _controller.loadProfile,
+                      child: Text(
+                        'Reintentar',
+                        style: AppTextStyles.buttonLabel.copyWith(
+                          color: AppColors.primary,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               )
             : SingleChildScrollView(

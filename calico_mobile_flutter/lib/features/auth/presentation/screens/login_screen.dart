@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/constants/app_colors.dart';
@@ -22,26 +25,42 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
+  bool _isOffline = false;
+  ({String email, String password})? _pendingEmailLogin;
+  bool _pendingGoogleLogin = false;
 
   @override
   void initState() {
     super.initState();
     _controller = LoginController(AuthRepositoryImpl(ApiClient()));
     _controller.addListener(_onControllerUpdate);
+    _restoreFirebaseSessionIfAny();
+    _watchConnectivity();
   }
 
   void _onControllerUpdate() {
     setState(() {});
 
     if (_controller.status == LoginStatus.success) {
+      final uid = _controller.userId?.trim() ?? '';
+      if (uid.isEmpty) {
+        _showSnackBar(
+          'No recibimos un identificador de usuario. Intenta iniciar sesión otra vez.',
+          error: true,
+        );
+        _controller.reset();
+        return;
+      }
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          builder: (_) => HomeScreen(studentId: _controller.userId ?? ''),
+          builder: (_) => HomeScreen(studentId: uid),
         ),
       );
     } else if (_controller.status == LoginStatus.failure) {
       _showSnackBar(
-        _controller.errorMessage ?? 'Login failed. Please try again.',
+        _controller.errorMessage ??
+            'No pudimos iniciar sesión en este momento. Intenta nuevamente.',
         error: true,
       );
     }
@@ -63,6 +82,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   void dispose() {
+    _connectivitySub?.cancel();
     _controller.removeListener(_onControllerUpdate);
     _controller.dispose();
     _emailController.dispose();
@@ -70,16 +90,72 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
+  Future<void> _restoreFirebaseSessionIfAny() async {
+    final user = FirebaseAuth.instance.currentUser;
+    final uid = user?.uid.trim() ?? '';
+    if (!mounted || uid.isEmpty) return;
+    Navigator.of(
+      context,
+    ).pushReplacement(MaterialPageRoute(builder: (_) => HomeScreen(studentId: uid)));
+  }
+
+  Future<void> _watchConnectivity() async {
+    final initial = await Connectivity().checkConnectivity();
+    if (!mounted) return;
+    setState(
+      () => _isOffline = initial.isEmpty || initial.every((r) => r == ConnectivityResult.none),
+    );
+    _connectivitySub = Connectivity().onConnectivityChanged.listen((results) {
+      if (!mounted) return;
+      final wasOffline = _isOffline;
+      final nowOffline =
+          results.isEmpty || results.every((r) => r == ConnectivityResult.none);
+      setState(() => _isOffline = nowOffline);
+
+      // Eventual connectivity strategy: retry the login intent once network is back.
+      if (wasOffline && !nowOffline) {
+        if (_pendingEmailLogin case final creds?) {
+          _pendingEmailLogin = null;
+          _showSnackBar('Conexión recuperada. Reintentando inicio de sesión.', error: false);
+          _controller.login(email: creds.email, password: creds.password);
+        } else if (_pendingGoogleLogin) {
+          _pendingGoogleLogin = false;
+          _showSnackBar(
+            'Conexión recuperada. Puedes continuar con Google.',
+            error: false,
+          );
+        }
+      }
+    });
+  }
+
   void _onLoginPressed() {
-    if (_formKey.currentState?.validate() ?? false) {
-      _controller.login(
-        email: _emailController.text.trim(),
-        password: _passwordController.text,
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+
+    if (_isOffline) {
+      _pendingEmailLogin = (email: email, password: password);
+      _showSnackBar(
+        'Sin conexión. Guardamos tu intento y lo reintentaremos al reconectar.',
+        error: true,
       );
+      return;
     }
+
+    _controller.login(email: email, password: password);
   }
 
   void _onGooglePressed() {
+    if (_isOffline) {
+      _pendingGoogleLogin = true;
+      _showSnackBar(
+        'Sin conexión. Activa internet para continuar con Google.',
+        error: true,
+      );
+      return;
+    }
     _controller.loginWithGoogle();
   }
 
@@ -96,6 +172,22 @@ class _LoginScreenState extends State<LoginScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _LogoSection(),
+                if (_isOffline)
+                  Container(
+                    margin: const EdgeInsets.fromLTRB(16, 4, 16, 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade50,
+                      border: Border.all(color: Colors.orange.shade300),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      'Sin conexión: puedes escribir tus datos; el intento de login se reintentará al reconectar.',
+                      style: AppTextStyles.itemSubtitle.copyWith(
+                        color: Colors.orange.shade700,
+                      ),
+                    ),
+                  ),
                 _InputField(
                   label: 'Username or Email',
                   controller: _emailController,
@@ -362,6 +454,27 @@ class _ForgotPasswordLink extends StatelessWidget {
               final email = emailController.text.trim();
               if (email.isEmpty) return;
               try {
+                final connectivity = await Connectivity().checkConnectivity();
+                final offline = connectivity.isEmpty ||
+                    connectivity.every((r) => r == ConnectivityResult.none);
+                if (offline) {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        'Sin conexión. Debes estar en línea para restablecer la contraseña.',
+                        style: GoogleFonts.lexend(fontSize: 14),
+                      ),
+                      backgroundColor: const Color(0xFFB00020),
+                      behavior: SnackBarBehavior.floating,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      margin: const EdgeInsets.all(16),
+                    ),
+                  );
+                  return;
+                }
                 await FirebaseAuth.instance.sendPasswordResetEmail(
                   email: email,
                 );
