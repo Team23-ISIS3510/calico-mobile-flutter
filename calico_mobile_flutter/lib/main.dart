@@ -1,9 +1,17 @@
-import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/material.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+
 import 'app.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Hive.initFlutter() must run before any Hive box is opened. The actual box
+  // ('available_tutors_cache') is opened lazily the first time the cache is
+  // read or written — see AvailableTutorsHiveCache.
+  await Hive.initFlutter();
+
   try {
     await Firebase.initializeApp(
       options: const FirebaseOptions(

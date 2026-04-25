@@ -1,0 +1,90 @@
+import 'dart:async';
+import 'dart:math';
+
+import 'package:flutter/foundation.dart';
+import 'package:sensors_plus/sensors_plus.dart';
+
+class MotionAlertService {
+  MotionAlertService({
+    this.threshold = 18.0,
+    this.minHitsInWindow = 5,
+    this.window = const Duration(seconds: 30),
+    this.cooldown = const Duration(minutes: 1),
+  });
+  final double threshold;
+  final int minHitsInWindow;
+  final Duration window;
+  final Duration cooldown;
+
+  StreamSubscription<AccelerometerEvent>? _subscription;
+  final List<DateTime> _hits = <DateTime>[];
+  DateTime? _lastAlertAt;
+  DateTime? _lastHitAt;
+
+  bool get isMonitoring => _subscription != null;
+
+  /// Debug counters to make motion detection observable in the UI.
+  ///
+  /// - [hitsInWindow] tracks how many qualifying accelerometer hits occurred
+  ///   inside the active [window] (after debounce).
+  /// - [totalHits] tracks total qualifying hits since the last start/stop.
+  final ValueNotifier<int> hitsInWindow = ValueNotifier<int>(0);
+  final ValueNotifier<int> totalHits = ValueNotifier<int>(0);
+
+  void start({
+    required Future<void> Function(String reason) onTriggered,
+  }) {
+    if (isMonitoring) return;
+
+    // Reset per-run counters so the profile dialog reflects this session.
+    hitsInWindow.value = 0;
+    totalHits.value = 0;
+
+    _subscription = accelerometerEventStream().listen((event) async {
+      final now = DateTime.now();
+      final magnitude = sqrt(
+        (event.x * event.x) + (event.y * event.y) + (event.z * event.z),
+      );
+
+      if (magnitude < threshold) return;
+
+      if (_lastHitAt != null &&
+          now.difference(_lastHitAt!) < const Duration(milliseconds: 700)) {
+        return;
+      }
+      _lastHitAt = now;
+
+      _hits.add(now);
+      _hits.removeWhere((hit) => now.difference(hit) > window);
+      hitsInWindow.value = _hits.length;
+      totalHits.value = totalHits.value + 1;
+
+      if (_hits.length < minHitsInWindow) return;
+      if (_lastAlertAt != null && now.difference(_lastAlertAt!) < cooldown) {
+        return;
+      }
+
+      _lastAlertAt = now;
+      _hits.clear();
+      hitsInWindow.value = 0;
+      await onTriggered(
+        'Se detectaron $minHitsInWindow movimientos bruscos en ${window.inSeconds} segundos.',
+      );
+    });
+  }
+
+  Future<void> stop() async {
+    await _subscription?.cancel();
+    _subscription = null;
+    _hits.clear();
+    hitsInWindow.value = 0;
+  }
+
+  void dispose() {
+    _subscription?.cancel();
+    _subscription = null;
+    _hits.clear();
+    hitsInWindow.dispose();
+    totalHits.dispose();
+  }
+}

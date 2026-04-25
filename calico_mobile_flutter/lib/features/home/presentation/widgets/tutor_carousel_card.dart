@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/constants/app_colors.dart';
-import '../../data/models/available_tutor_model.dart';
+import '../../domain/entities/tutor_entity.dart';
 
 /// Card used in the "Top Rated & Available Soon" horizontal carousel.
 /// Shows tutor name, rating, location, and the next available time slot
 /// with a live countdown.
 class TutorCarouselCard extends StatelessWidget {
-  final AvailableTutorModel tutor;
+  final TutorEntity tutor;
   final VoidCallback? onTap;
 
   const TutorCarouselCard({super.key, required this.tutor, this.onTap});

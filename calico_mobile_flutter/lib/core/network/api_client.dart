@@ -4,12 +4,16 @@ import 'package:http/http.dart' as http;
 import '../errors/app_exception.dart';
 
 class ApiClient {
-  static const String _baseUrl = 'http://localhost:3000'; //http://192.168.0.16:3000
+  static const String _baseUrl = 'https://backend-th7q.onrender.com'; //http://192.168.0.16:3000
   static const Duration _timeout = Duration(seconds: 15);
 
-  final http.Client _client;
+  static final ApiClient _instance = ApiClient._internal();
 
-  ApiClient({http.Client? client}) : _client = client ?? http.Client();
+  factory ApiClient() => _instance;
+
+  ApiClient._internal() : _client = http.Client();
+
+  final http.Client _client;
 
   Future<Map<String, dynamic>> get(
     String path, {

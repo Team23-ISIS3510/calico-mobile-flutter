@@ -1,3 +1,5 @@
+import '../../domain/entities/session_entity.dart';
+
 class SessionModel {
   final String id;
   final String tutorId;
@@ -77,6 +79,19 @@ class SessionModel {
   String get displayCourse => courseName != null && courseName!.isNotEmpty
       ? courseName!
       : (courseId ?? '');
+
+  SessionEntity toEntity() => SessionEntity(
+        id: id,
+        tutorId: tutorId,
+        studentId: studentId,
+        startDateTime: startDateTime,
+        endDateTime: endDateTime,
+        courseId: courseId,
+        courseName: courseName,
+        tutorName: tutorName,
+        tutorEmail: tutorEmail,
+        status: status,
+      );
 
   static DateTime? _parseDate(dynamic value) {
     if (value == null) return null;
