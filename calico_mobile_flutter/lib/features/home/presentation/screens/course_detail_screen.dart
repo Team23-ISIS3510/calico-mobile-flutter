@@ -77,6 +77,9 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
         setState(() {
           _tutors = result.data;
           _tutorsFromCache = result.isFromCache;
+          // Heuristic: if remote path succeeds (not cache fallback), we have
+          // effective connectivity even if the OS network callback lags.
+          if (!result.isFromCache) _isOffline = false;
         });
         await _tutoringRepo.trackCarouselEvent(
           'results_shown',
@@ -89,6 +92,9 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
         setState(() {
           _tutors = [];
           _tutorsFromCache = false;
+          // Direct UX fallback: treat request failure as offline so the banner
+          // appears even when Wi-Fi is connected but internet is unavailable.
+          _isOffline = true;
         });
       }
     }
@@ -114,6 +120,8 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
           _goToTutorFromCache = false;
           _goToTutorLastUpdated = null;
           _goToTutorLoaded = true;
+          // Same rationale as _loadTutors: failed fetch => likely offline path.
+          _isOffline = true;
         });
       }
     }
