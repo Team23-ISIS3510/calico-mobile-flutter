@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -23,6 +26,7 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   late final ProfileController _controller;
+  late final StreamSubscription<List<ConnectivityResult>> _connectivitySub;
   bool _isLoggingOut = false;
   MotionAlertSettings _motionSettings = const MotionAlertSettings(
     alertEmail: '',
@@ -41,6 +45,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _controller.addListener(_onUpdate);
     _controller.loadProfile();
     _loadMotionSettings();
+
+    _connectivitySub = Connectivity().onConnectivityChanged.listen((results) {
+      final online = results.isNotEmpty &&
+          results.any((r) => r != ConnectivityResult.none);
+      if (online && mounted) _controller.syncAndReload();
+    });
   }
 
   void _onUpdate() => setState(() {});
@@ -55,6 +65,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   void dispose() {
+    _connectivitySub.cancel();
     _controller.removeListener(_onUpdate);
     _controller.dispose();
     super.dispose();
@@ -85,29 +96,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     // because the API was unreachable.  Subtle but visible so
                     // the user knows the data may be stale.
                     if (_controller.fromCache)
-                      Container(
-                        color: Colors.orange.shade50,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 6,
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.offline_bolt,
-                              size: 14,
-                              color: Colors.orange.shade700,
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              'Showing saved data',
-                              style: AppTextStyles.itemSubtitle.copyWith(
-                                color: Colors.orange.shade700,
-                              ),
-                            ),
-                          ],
-                        ),
+                      _InfoBanner(
+                        icon: Icons.offline_bolt,
+                        label: 'Showing saved data',
+                        color: Colors.orange.shade700,
+                        background: Colors.orange.shade50,
+                      ),
+                    if (_controller.hasPendingUpdate)
+                      _InfoBanner(
+                        icon: Icons.sync,
+                        label: 'Description pending sync — will update when online',
+                        color: Colors.blue.shade700,
+                        background: Colors.blue.shade50,
                       ),
                     _ProfileHeader(profile: _controller.profile!),
                     _AboutSection(
@@ -171,6 +171,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
     if (result != null) {
       await _controller.updateProfile(description: result);
+      if (!mounted) return;
+      if (_controller.hasPendingUpdate) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Saved locally — will sync when online'),
+            backgroundColor: Colors.blueGrey,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     }
   }
 
@@ -194,6 +204,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     var enabled = _motionSettings.isEnabled;
     String? errorText;
 
+    if (!mounted) return;
     final updated = await showDialog<MotionAlertSettings>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
@@ -639,6 +650,42 @@ class _LogoutButton extends StatelessWidget {
                   ),
                 ),
         ),
+      ),
+    );
+  }
+}
+
+class _InfoBanner extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final Color background;
+
+  const _InfoBanner({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.background,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: background,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              label,
+              style: AppTextStyles.itemSubtitle.copyWith(color: color),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ],
       ),
     );
   }

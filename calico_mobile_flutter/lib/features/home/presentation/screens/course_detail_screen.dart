@@ -1,19 +1,16 @@
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_text_styles.dart';
 import '../../../../core/network/api_client.dart';
-import '../../../../core/widgets/offline_cache_notice.dart';
-import '../../data/repositories/analytics_repository_impl.dart';
-import '../../data/repositories/session_repository_impl.dart';
-import '../../data/repositories/student_tutoring_repository_impl.dart';
 import '../../domain/entities/course_entity.dart';
 import '../../domain/entities/session_entity.dart';
 import '../../domain/entities/tutor_entity.dart';
-import '../../domain/repositories/student_tutoring_repository.dart';
-import '../widgets/booking_bottom_sheet.dart';
+import '../../domain/repositories/analytics_repository.dart';
+import '../../data/repositories/analytics_repository_impl.dart';
 import '../widgets/tutor_carousel_card.dart';
+import '../widgets/booking_bottom_sheet.dart';
 
 class CourseDetailScreen extends StatefulWidget {
   final CourseEntity course;
@@ -33,42 +30,38 @@ class CourseDetailScreen extends StatefulWidget {
 
 class _CourseDetailScreenState extends State<CourseDetailScreen> {
   List<TutorEntity>? _tutors;
-  bool _tutorsFromCache = false;
-  DateTime? _tutorsLastUpdated;
-
   bool _goToTutorLoaded = false;
   TutorEntity? _goToTutor;
-  bool _goToTutorFromCache = false;
-  DateTime? _goToTutorLastUpdated;
-
-  late final StudentTutoringRepository _repo;
+  late final AnalyticsRepository _repo;
+  // True when the tutor list was served from the Hive cache (device offline).
+  bool _tutorsFromCache = false;
 
   @override
   void initState() {
     super.initState();
-    final client = ApiClient();
-    _repo = StudentTutoringRepositoryImpl(
-      AnalyticsRepositoryImpl(client),
-      SessionRepositoryImpl(client),
-      client,
-    );
+    _repo = AnalyticsRepositoryImpl(ApiClient());
     _loadTutors(_repo);
     if (widget.studentId.isNotEmpty) _loadGoToTutor(_repo);
   }
 
-  Future<void> _loadTutors(StudentTutoringRepository repo) async {
+  Future<void> _loadTutors(AnalyticsRepository repo) async {
+    // Check connectivity before the fetch so we know whether any data
+    // that comes back must have been served from the Hive cache.
+    final results = await Connectivity().checkConnectivity();
+    final isOnline = results.any((r) => r != ConnectivityResult.none);
+
     try {
-      final result = await repo.getAvailableTutorsNext4Hours(widget.course.id);
+      final tutors = await repo.getAvailableTutors(widget.course.id);
       if (mounted) {
         setState(() {
-          _tutors = result.data;
-          _tutorsFromCache = result.isFromCache;
-          _tutorsLastUpdated = result.lastUpdated;
+          _tutors = tutors;
+          // If we were offline but still got tutors, they came from Hive.
+          _tutorsFromCache = !isOnline && tutors.isNotEmpty;
         });
         repo.trackCarouselEvent(
           'results_shown',
           widget.course.id,
-          resultCount: result.data.length,
+          resultCount: tutors.length,
         );
       }
     } catch (_) {
@@ -76,17 +69,15 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
     }
   }
 
-  Future<void> _loadGoToTutor(StudentTutoringRepository repo) async {
+  Future<void> _loadGoToTutor(AnalyticsRepository repo) async {
     try {
-      final result = await repo.getGoToTutor(
+      final tutor = await repo.getReturningTutor(
         widget.studentId,
         widget.course.id,
       );
       if (mounted) {
         setState(() {
-          _goToTutor = result.data;
-          _goToTutorFromCache = result.isFromCache;
-          _goToTutorLastUpdated = result.lastUpdated;
+          _goToTutor = tutor;
           _goToTutorLoaded = true;
         });
       }
@@ -150,8 +141,6 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
                 studentId: widget.studentId,
                 courseId: widget.course.id,
                 existingSessions: widget.existingSessions,
-                isFromCache: _goToTutorFromCache,
-                lastUpdated: _goToTutorLastUpdated,
               ),
             ],
 
@@ -159,15 +148,14 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
               const SizedBox(height: 28),
               _TutorSection(
                 tutors: _tutors,
+                fromCache: _tutorsFromCache,
                 studentId: widget.studentId,
                 courseId: widget.course.id,
                 existingSessions: widget.existingSessions,
-                isFromCache: _tutorsFromCache,
-                lastUpdated: _tutorsLastUpdated,
                 onTutorTapped: (tutor) {
-                  final countdown = tutor.nextSlotStart != null
-                      ? tutor.nextSlotStart!.difference(DateTime.now()).inMinutes
-                      : null;
+                  final countdown = tutor.nextSlotStart
+                      ?.difference(DateTime.now())
+                      .inMinutes;
                   _repo.trackCarouselEvent(
                     'tutor_clicked',
                     widget.course.id,
@@ -200,20 +188,19 @@ class _TutorSection extends StatelessWidget {
   final String studentId;
   final String courseId;
   final List<SessionEntity> existingSessions;
-  final bool isFromCache;
-  final DateTime? lastUpdated;
   final void Function(TutorEntity tutor)? onTutorTapped;
   final void Function(TutorEntity tutor)? onTutorBooked;
+  // True when tutors were served from the Hive cache (device offline).
+  final bool fromCache;
 
   const _TutorSection({
     required this.tutors,
     required this.studentId,
     required this.courseId,
     required this.existingSessions,
-    required this.isFromCache,
-    required this.lastUpdated,
     this.onTutorTapped,
     this.onTutorBooked,
+    this.fromCache = false,
   });
 
   @override
@@ -252,11 +239,22 @@ class _TutorSection extends StatelessWidget {
           'Available in the next 4 hours for this course',
           style: AppTextStyles.itemSubtitle,
         ),
-        if (isFromCache)
-          OfflineCacheNotice(
-            lastUpdated: lastUpdated,
-            padding: const EdgeInsets.only(top: 10),
+        // Shown when Hive returned expired/fallback data because we are offline.
+        if (fromCache) ...[
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Icon(Icons.cloud_off, size: 13, color: Colors.orange.shade600),
+              const SizedBox(width: 4),
+              Text(
+                'Showing cached tutors',
+                style: AppTextStyles.itemSubtitle.copyWith(
+                  color: Colors.orange.shade600,
+                ),
+              ),
+            ],
           ),
+        ],
         const SizedBox(height: 14),
         if (tutors == null)
           const SizedBox(
@@ -282,8 +280,9 @@ class _TutorSection extends StatelessWidget {
               separatorBuilder: (_, _) => const SizedBox(width: 12),
               itemBuilder: (context, i) {
                 final tutor = tutors![i];
-                final alreadyBooked = existingSessions
-                    .any((s) => s.tutorId == tutor.id);
+                final alreadyBooked = existingSessions.any(
+                  (s) => s.tutorId == tutor.id,
+                );
                 return TutorCarouselCard(
                   tutor: tutor,
                   onTap: () async {
@@ -329,16 +328,12 @@ class _GoToTutorSection extends StatelessWidget {
   final String studentId;
   final String courseId;
   final List<SessionEntity> existingSessions;
-  final bool isFromCache;
-  final DateTime? lastUpdated;
 
   const _GoToTutorSection({
     required this.tutor,
     required this.studentId,
     required this.courseId,
     required this.existingSessions,
-    required this.isFromCache,
-    required this.lastUpdated,
   });
 
   String _slotRange() {
@@ -412,16 +407,12 @@ class _GoToTutorSection extends StatelessWidget {
           'Your most-booked tutor for this course',
           style: AppTextStyles.itemSubtitle,
         ),
-        if (isFromCache)
-          OfflineCacheNotice(
-            lastUpdated: lastUpdated,
-            padding: const EdgeInsets.only(top: 10),
-          ),
         const SizedBox(height: 14),
         GestureDetector(
           onTap: () async {
-            final alreadyBooked = existingSessions
-                .any((s) => s.tutorId == tutor.id);
+            final alreadyBooked = existingSessions.any(
+              (s) => s.tutorId == tutor.id,
+            );
             if (alreadyBooked) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(

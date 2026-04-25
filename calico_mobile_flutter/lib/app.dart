@@ -1,28 +1,10 @@
 import 'package:flutter/material.dart';
-import 'core/services/motion_alert_coordinator.dart';
 import 'features/auth/presentation/screens/login_screen.dart';
 import 'features/home/presentation/screens/home_screen.dart';
 
 /// Root widget. Owns theming and the route table.
-class CalicoApp extends StatefulWidget {
+class CalicoApp extends StatelessWidget {
   const CalicoApp({super.key});
-
-  @override
-  State<CalicoApp> createState() => _CalicoAppState();
-}
-
-class _CalicoAppState extends State<CalicoApp> {
-  @override
-  void initState() {
-    super.initState();
-    MotionAlertCoordinator.instance.initialize();
-  }
-
-  @override
-  void dispose() {
-    MotionAlertCoordinator.instance.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {

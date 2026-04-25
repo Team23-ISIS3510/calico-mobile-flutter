@@ -4,12 +4,6 @@ import '../../domain/entities/tutor_entity.dart';
 import '../../domain/repositories/analytics_repository.dart';
 import '../models/available_tutor_model.dart';
 
-/// Thin remote client for `/analytics/*` endpoints.
-///
-/// Offline fallback is not the responsibility of this class. `StudentTutoring
-/// RepositoryImpl` wraps `getAvailableTutors` and `getReturningTutor` with the
-/// SQLite cache provided by `AppDatabaseService`, so callers can rely on the
-/// `CachedResult` envelope for both fresh and cached reads.
 class AnalyticsRepositoryImpl implements AnalyticsRepository {
   final ApiClient _apiClient;
 
@@ -77,14 +71,17 @@ class AnalyticsRepositoryImpl implements AnalyticsRepository {
     int? countdownMinutes,
   }) async {
     try {
-      await _apiClient.post('/analytics/event', body: {
-        'event': event,
-        'courseId': courseId,
-        'tutorId': ?tutorId,
-        'tutorRating': ?tutorRating,
-        'resultCount': ?resultCount,
-        'countdownMinutes': ?countdownMinutes,
-      });
+      await _apiClient.post(
+        '/analytics/event',
+        body: {
+          'event': event,
+          'courseId': courseId,
+          'tutorId': ?tutorId,
+          'tutorRating': ?tutorRating,
+          'resultCount': ?resultCount,
+          'countdownMinutes': ?countdownMinutes,
+        },
+      );
     } catch (_) {
       // Fire-and-forget: never let tracking break the UI.
     }

@@ -1,6 +1,21 @@
+// WHY DRIFT (SQLite ORM)?
+// SQLite is the right tool for a pending-queue because rows have a lifecycle
+// (inserted offline → synced online → optionally deleted). Drift adds:
+//   - compile-time type-safe queries via generated code
+//   - @DriftDatabase annotation that generates the _$ base class
+//   - LazyDatabase so the file is opened on first use, not at startup
+//
+// TRADE-OFF vs SharedPreferences / Hive:
+//   + Relational queries (filter unsynced, update by id)
+//   - Requires build_runner code generation step
+//   - Heavier than key-value stores; only justified for structured queues
+//
+// After any change here, run:
+//   dart run build_runner build --delete-conflicting-outputs
+
 import 'package:drift/drift.dart';
 
-import 'pending_sessions_connection_native.dart';
+import 'pending_sessions_connection.dart';
 
 part 'pending_sessions_database.g.dart';
 
@@ -27,8 +42,7 @@ class PendingSessions extends Table {
   DateTimeColumn get createdAt => dateTime()();
 
   /// false = waiting for sync; true = successfully POSTed to the server.
-  BoolColumn get synced =>
-      boolean().withDefault(const Constant(false))();
+  BoolColumn get synced => boolean().withDefault(const Constant(false))();
 
   // Denormalised fields kept for the POST body — avoids a join at sync time.
   TextColumn get tutorName => text().nullable()();
@@ -41,10 +55,9 @@ class PendingSessions extends Table {
 @DriftDatabase(tables: [PendingSessions])
 class PendingSessionsDatabase extends _$PendingSessionsDatabase {
   // Singleton so every feature shares one open file handle.
-  PendingSessionsDatabase._() : super(createConnection());
+  PendingSessionsDatabase._() : super(openConnection());
 
-  static final PendingSessionsDatabase _instance =
-      PendingSessionsDatabase._();
+  static final PendingSessionsDatabase _instance = PendingSessionsDatabase._();
 
   static PendingSessionsDatabase get instance => _instance;
 
@@ -56,16 +69,15 @@ class PendingSessionsDatabase extends _$PendingSessionsDatabase {
   /// Returns all rows where synced = false for [studentId].
   Future<List<PendingSession>> getUnsynced(String studentId) {
     return (select(pendingSessions)
-          ..where(
-            (t) => t.studentId.equals(studentId) & t.synced.equals(false),
-          )
+          ..where((t) => t.studentId.equals(studentId) & t.synced.equals(false))
           ..orderBy([(t) => OrderingTerm.asc(t.createdAt)]))
         .get();
   }
 
   /// Marks a single row as synced after a successful server POST.
   Future<void> markSynced(int id) {
-    return (update(pendingSessions)..where((t) => t.id.equals(id)))
-        .write(const PendingSessionsCompanion(synced: Value(true)));
+    return (update(pendingSessions)..where((t) => t.id.equals(id))).write(
+      const PendingSessionsCompanion(synced: Value(true)),
+    );
   }
 }
