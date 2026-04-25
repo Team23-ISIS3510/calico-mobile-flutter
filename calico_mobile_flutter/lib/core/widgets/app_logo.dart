@@ -14,11 +14,7 @@ class AppLogo extends StatelessWidget {
   final double width;
   final double height;
 
-  const AppLogo({
-    super.key,
-    this.width = 178,
-    this.height = 79,
-  });
+  const AppLogo({super.key, this.width = 178, this.height = 79});
 
   @override
   Widget build(BuildContext context) {
@@ -27,7 +23,7 @@ class AppLogo extends StatelessWidget {
       width: width,
       height: height,
       fit: BoxFit.contain,
-      errorBuilder: (_, __, ___) => Text(
+      errorBuilder: (_, _, _) => Text(
         'Calico',
         style: GoogleFonts.lexend(
           fontWeight: FontWeight.w700,

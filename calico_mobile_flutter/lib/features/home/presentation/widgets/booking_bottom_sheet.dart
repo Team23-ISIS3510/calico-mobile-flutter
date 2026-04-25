@@ -86,21 +86,23 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
     if (!isOnline) {
       try {
         final db = PendingSessionsDatabase.instance;
-        await db.into(db.pendingSessions).insert(
-          PendingSessionsCompanion.insert(
-            tutorId: widget.tutor.id,
-            studentId: widget.studentId,
-            courseId: widget.courseId,
-            scheduledStart: widget.tutor.nextSlotStart!.toIso8601String(),
-            scheduledEnd: widget.tutor.nextSlotEnd!.toIso8601String(),
-            location: widget.tutor.location,
-            bookingSource: widget.bookingSource,
-            createdAt: DateTime.now(),
-            tutorName: Value(widget.tutor.name),
-            parentAvailabilityId: Value(widget.tutor.parentAvailabilityId),
-            nextSlotIndex: Value(widget.tutor.nextSlotIndex),
-          ),
-        );
+        await db
+            .into(db.pendingSessions)
+            .insert(
+              PendingSessionsCompanion.insert(
+                tutorId: widget.tutor.id,
+                studentId: widget.studentId,
+                courseId: widget.courseId,
+                scheduledStart: widget.tutor.nextSlotStart!.toIso8601String(),
+                scheduledEnd: widget.tutor.nextSlotEnd!.toIso8601String(),
+                location: widget.tutor.location,
+                bookingSource: widget.bookingSource,
+                createdAt: DateTime.now(),
+                tutorName: Value(widget.tutor.name),
+                parentAvailabilityId: Value(widget.tutor.parentAvailabilityId),
+                nextSlotIndex: Value(widget.tutor.nextSlotIndex),
+              ),
+            );
         setState(() {
           _isLoading = false;
           _savedOffline = true;
