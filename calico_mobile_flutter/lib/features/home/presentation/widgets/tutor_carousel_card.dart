@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/services/campus_location_service.dart';
 import '../../domain/entities/tutor_entity.dart';
 
 /// Card used in the "Top Rated & Available Soon" horizontal carousel.
@@ -9,8 +10,25 @@ import '../../domain/entities/tutor_entity.dart';
 class TutorCarouselCard extends StatelessWidget {
   final TutorEntity tutor;
   final VoidCallback? onTap;
+  // When non-null, cards whose location matches the user's context are
+  // highlighted; non-matching cards are dimmed.
+  final bool? isOnCampus;
 
-  const TutorCarouselCard({super.key, required this.tutor, this.onTap});
+  const TutorCarouselCard({
+    super.key,
+    required this.tutor,
+    this.onTap,
+    this.isOnCampus,
+  });
+
+  bool get _isHighlighted {
+    if (isOnCampus == null) return false;
+    return isOnCampus!
+        ? CampusLocationService.matchesCampus(tutor.location)
+        : CampusLocationService.matchesVirtual(tutor.location);
+  }
+
+  bool get _isDimmed => isOnCampus != null && !_isHighlighted;
 
   /// "Today  3:00 – 4:00 PM" or "Tomorrow  3:00 PM" etc.
   String _slotRange() {
@@ -76,18 +94,21 @@ class TutorCarouselCard extends StatelessWidget {
     final slotRange = _slotRange();
     final countdown = _countdown();
 
-    return Material(
+    final Widget card = Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
-        splashColor: AppColors.primary.withOpacity(0.2),
+        splashColor: AppColors.primary.withValues(alpha: 0.2),
         child: Container(
           width: 204,
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             color: AppColors.inputBackground,
             borderRadius: BorderRadius.circular(12),
+            border: _isHighlighted
+                ? Border.all(color: AppColors.primary, width: 2)
+                : null,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -236,5 +257,6 @@ class TutorCarouselCard extends StatelessWidget {
         ),
       ),
     );
+    return _isDimmed ? Opacity(opacity: 0.5, child: card) : card;
   }
 }

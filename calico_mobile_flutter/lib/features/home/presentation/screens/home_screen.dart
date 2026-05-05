@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_text_styles.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/services/campus_location_service.dart';
 import '../../../../core/services/sync_service.dart';
 import '../../../../core/utils/context_aware_helper.dart';
 import '../../../../core/widgets/app_bottom_nav.dart';
@@ -46,6 +47,7 @@ class _HomeScreenState extends State<HomeScreen> {
   late final StreamSubscription<List<ConnectivityResult>>
       _connectivitySubscription;
   bool _isOffline = false;
+  bool? _isOnCampus;
 
   @override
   void initState() {
@@ -65,6 +67,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
     _connectivitySubscription =
         Connectivity().onConnectivityChanged.listen(_onConnectivityChanged);
+
+    CampusLocationService.checkIsOnCampus().then((result) {
+      if (mounted) setState(() => _isOnCampus = result);
+    }).catchError((_) {});
 
     // Run all I/O in parallel so total latency equals the slowest call.
     // eagerError: false lets partial data render instead of aborting on the
@@ -151,7 +157,7 @@ class _HomeScreenState extends State<HomeScreen> {
             bottom: false,
             child: Column(
               children: [
-                _HomeHeader(),
+                _HomeHeader(isOnCampus: _isOnCampus),
                 if (_isOffline)
                   Container(
                     width: double.infinity,
@@ -301,6 +307,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       builder: (_) => CourseDetailScreen(
                         course: course,
                         studentId: widget.studentId,
+                        isOnCampus: _isOnCampus,
                       ),
                     ),
                   ),
@@ -352,6 +359,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       course: c,
                       studentId: widget.studentId,
                       existingSessions: _controller.sessions,
+                      isOnCampus: _isOnCampus,
                     ),
                   ),
                 );
@@ -427,14 +435,52 @@ class _HomeScreenState extends State<HomeScreen> {
 // ─── Private sub-widgets ────────────────────────────────────────────────────
 
 class _HomeHeader extends StatelessWidget {
+  final bool? isOnCampus;
+  const _HomeHeader({this.isOnCampus});
+
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
       color: AppColors.background,
-      child: const Row(
+      child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [AppLogo()],
+        children: [
+          const AppLogo(),
+          if (isOnCampus != null)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: isOnCampus!
+                    ? Colors.green.shade100
+                    : Colors.blue.shade100,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    isOnCampus! ? Icons.school : Icons.laptop,
+                    size: 14,
+                    color: isOnCampus!
+                        ? Colors.green.shade700
+                        : Colors.blue.shade700,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    isOnCampus! ? 'In campus' : 'Virtual',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: isOnCampus!
+                          ? Colors.green.shade700
+                          : Colors.blue.shade700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }
