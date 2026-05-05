@@ -28,6 +28,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   late final ProfileController _controller;
   late final StreamSubscription<List<ConnectivityResult>> _connectivitySub;
   bool _isLoggingOut = false;
+  bool _isOnline = true;
   MotionAlertSettings _motionSettings = const MotionAlertSettings(
     alertEmail: '',
     studentName: '',
@@ -47,9 +48,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _loadMotionSettings();
 
     _connectivitySub = Connectivity().onConnectivityChanged.listen((results) {
-      final online = results.isNotEmpty &&
+      final online =
+          results.isNotEmpty &&
           results.any((r) => r != ConnectivityResult.none);
-      if (online && mounted) _controller.syncAndReload();
+      if (mounted) {
+        setState(() => _isOnline = online);
+        if (online) _controller.syncAndReload();
+      }
     });
   }
 
@@ -86,7 +91,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.person_off, size: 48, color: AppColors.brown),
+                    const Icon(
+                      Icons.person_off,
+                      size: 48,
+                      color: AppColors.brown,
+                    ),
                     const SizedBox(height: 12),
                     Text(
                       _controller.errorMessage?.trim().isNotEmpty == true
@@ -112,10 +121,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // ── Offline cache badge ─────────────────────────────
-                    // Shown when getProfile() fell back to SharedPreferences
-                    // because the API was unreachable.  Subtle but visible so
-                    // the user knows the data may be stale.
                     if (_controller.fromCache)
                       _InfoBanner(
                         icon: Icons.offline_bolt,
@@ -126,7 +131,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     if (_controller.hasPendingUpdate)
                       _InfoBanner(
                         icon: Icons.sync,
-                        label: 'Description pending sync — will update when online',
+                        label:
+                            'Description pending sync — will update when online',
                         color: Colors.blue.shade700,
                         background: Colors.blue.shade50,
                       ),
@@ -139,7 +145,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       settings: _motionSettings,
                       onConfigure: _openMotionAlertDialog,
                     ),
-                    _ChangeModeButton(),
+                    _ChangeModeButton(isOnline: _isOnline),
                     _LogoutButton(
                       isLoading: _isLoggingOut,
                       onPressed: _handleLogout,
@@ -232,10 +238,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: Text(
-            'Alerta por movimiento',
-            style: AppTextStyles.itemTitle,
-          ),
+          title: Text('Alerta por movimiento', style: AppTextStyles.itemTitle),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -265,7 +268,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         const SizedBox(height: 4),
                         Text(
                           _formatAlertPreview(previousAlert),
-                          style: AppTextStyles.itemSubtitle.copyWith(fontSize: 12),
+                          style: AppTextStyles.itemSubtitle.copyWith(
+                            fontSize: 12,
+                          ),
                         ),
                       ],
                     ),
@@ -332,21 +337,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                       const SizedBox(height: 6),
                       ValueListenableBuilder<int>(
-                        valueListenable: MotionAlertCoordinator.instance.hitsInWindow,
+                        valueListenable:
+                            MotionAlertCoordinator.instance.hitsInWindow,
                         builder: (context, hits, _) => Text(
                           'Shake hits (last ${MotionAlertCoordinator.instance.window.inSeconds}s): '
                           '$hits / ${MotionAlertCoordinator.instance.minHitsInWindow}',
-                          style:
-                              AppTextStyles.itemSubtitle.copyWith(fontSize: 12),
+                          style: AppTextStyles.itemSubtitle.copyWith(
+                            fontSize: 12,
+                          ),
                         ),
                       ),
                       const SizedBox(height: 2),
                       ValueListenableBuilder<int>(
-                        valueListenable: MotionAlertCoordinator.instance.totalHits,
+                        valueListenable:
+                            MotionAlertCoordinator.instance.totalHits,
                         builder: (context, total, _) => Text(
                           'Total hits (since monitoring started): $total',
-                          style:
-                              AppTextStyles.itemSubtitle.copyWith(fontSize: 12),
+                          style: AppTextStyles.itemSubtitle.copyWith(
+                            fontSize: 12,
+                          ),
                         ),
                       ),
                       const SizedBox(height: 6),
@@ -354,7 +363,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         enabled
                             ? 'Tip: shake firmly until the counter reaches the threshold.'
                             : 'Enable monitoring to start counting hits.',
-                        style: AppTextStyles.itemSubtitle.copyWith(fontSize: 12),
+                        style: AppTextStyles.itemSubtitle.copyWith(
+                          fontSize: 12,
+                        ),
                       ),
                     ],
                   ),
@@ -390,7 +401,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               },
               child: Text(
                 'Guardar',
-                style: AppTextStyles.linkText.copyWith(color: AppColors.primary),
+                style: AppTextStyles.linkText.copyWith(
+                  color: AppColors.primary,
+                ),
               ),
             ),
           ],
@@ -410,7 +423,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   String _formatAlertPreview(AlertLogEntry entry) {
     final dt = entry.timestamp.toLocal();
-    final day = dt.day.toString().padLeft(2, '0');      
+    final day = dt.day.toString().padLeft(2, '0');
     final month = dt.month.toString().padLeft(2, '0');
     final year = dt.year.toString();
     final hour = dt.hour.toString().padLeft(2, '0');
@@ -573,9 +586,7 @@ class _MotionAlertSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasEmail = settings.alertEmail.trim().isNotEmpty;
-    final statusText = settings.isEnabled && hasEmail
-        ? 'Activo'
-        : 'Inactivo';
+    final statusText = settings.isEnabled && hasEmail ? 'Activo' : 'Inactivo';
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Container(
@@ -642,9 +653,7 @@ class _AlertTextField extends StatelessWidget {
         errorText: errorText,
         filled: true,
         fillColor: Colors.white,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
         isDense: true,
       ),
     );
@@ -652,6 +661,10 @@ class _AlertTextField extends StatelessWidget {
 }
 
 class _ChangeModeButton extends StatelessWidget {
+  const _ChangeModeButton({required this.isOnline});
+
+  final bool isOnline;
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -659,12 +672,14 @@ class _ChangeModeButton extends StatelessWidget {
       child: SizedBox(
         height: 52,
         child: ElevatedButton(
-          onPressed: () async {
-            final url = Uri.parse('https://forms.gle/16c7j2dKP4L9wLMG7');
-            if (await canLaunchUrl(url)) {
-              await launchUrl(url, mode: LaunchMode.externalApplication);
-            }
-          },
+          onPressed: isOnline
+              ? () async {
+                  final url = Uri.parse('https://forms.gle/16c7j2dKP4L9wLMG7');
+                  if (await canLaunchUrl(url)) {
+                    await launchUrl(url, mode: LaunchMode.externalApplication);
+                  }
+                }
+              : null,
           style: ElevatedButton.styleFrom(
             backgroundColor: AppColors.primary,
             elevation: 0,
@@ -680,10 +695,7 @@ class _ChangeModeButton extends StatelessWidget {
 }
 
 class _LogoutButton extends StatelessWidget {
-  const _LogoutButton({
-    required this.isLoading,
-    required this.onPressed,
-  });
+  const _LogoutButton({required this.isLoading, required this.onPressed});
 
   final bool isLoading;
   final Future<void> Function() onPressed;
