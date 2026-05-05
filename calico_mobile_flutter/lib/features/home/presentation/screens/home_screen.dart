@@ -41,9 +41,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final _searchController = TextEditingController();
   int _selectedTab = 0;
 
-  // StreamSubscription on the connectivity feed. We must cancel it in
-  // dispose(); forgetting to do so keeps the callback (and this State) alive
-  // and causes setState-after-dispose errors.
   late final StreamSubscription<List<ConnectivityResult>>
   _connectivitySubscription;
   bool _isOffline = false;
@@ -69,8 +66,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
 
     if (widget.studentId.isNotEmpty) {
-      // Startup sync: fire once on launch in case sessions were queued offline
-      // last session. Use the same helper that handles errors and UI updates.
       Future.microtask(_trySyncIfOnline);
     }
 
@@ -80,9 +75,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         })
         .catchError((_) {});
 
-    // Run all I/O in parallel so total latency equals the slowest call.
-    // eagerError: false lets partial data render instead of aborting on the
-    // first failure, which is the right default for a home feed.
     _controller.markLoading();
     Future.wait([
           _controller.loadCourses(widget.studentId),
@@ -108,9 +100,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         results.isEmpty || results.every((r) => r == ConnectivityResult.none);
     if (mounted) setState(() => _isOffline = offline);
 
-    // On reconnect: flush pending offline bookings, flush any pending profile
-    // edit, then refresh the controller's pending-session list so ⏳ badges
-    // disappear for rows that were just confirmed by the server.
     if (!offline && widget.studentId.isNotEmpty) {
       _trySyncIfOnline();
       ProfileRepositoryImpl(ApiClient()).syncPendingUpdate(widget.studentId);
@@ -126,16 +115,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (!isOnline) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No internet connection — try again later.')),
+        const SnackBar(
+          content: Text('No internet connection — try again later.'),
+        ),
       );
       return;
     }
 
     if (mounted) setState(() => _isSyncing = true);
 
-    final result = await SyncService(ApiClient()).syncPendingSessions(
-      widget.studentId,
-    );
+    final result = await SyncService(
+      ApiClient(),
+    ).syncPendingSessions(widget.studentId);
 
     if (!mounted) return;
     setState(() => _isSyncing = false);
@@ -405,6 +396,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         builder: (_) => CourseDetailScreen(
                           course: course,
                           studentId: widget.studentId,
+                          existingSessions: [
+                            ..._controller.sessions,
+                            ..._controller.pendingSessions,
+                          ],
                           isOnCampus: _isOnCampus,
                         ),
                       ),
@@ -461,7 +456,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     builder: (_) => CourseDetailScreen(
                       course: c,
                       studentId: widget.studentId,
-                      existingSessions: _controller.sessions,
+                      existingSessions: [
+                        ..._controller.sessions,
+                        ..._controller.pendingSessions,
+                      ],
                       isOnCampus: _isOnCampus,
                     ),
                   ),

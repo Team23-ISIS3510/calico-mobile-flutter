@@ -45,7 +45,9 @@ class CampusLocationService {
         l.contains('in person') ||
         l.contains('sede') ||
         l.contains('salon') ||
-        l.contains('salón');
+        l.contains('salón') ||
+        l.contains('sala') ||
+        l.contains('bloque');
   }
 
   static bool matchesVirtual(String location) {
