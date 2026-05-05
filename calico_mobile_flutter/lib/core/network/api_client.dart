@@ -5,7 +5,7 @@ import '../errors/app_exception.dart';
 
 class ApiClient {
   static const String _baseUrl =
-      'http://192.168.0.7:3000'; //https://backend-th7q.onrender.com
+      'https://backend-th7q.onrender.com'; //https://backend-th7q.onrender.com
   static const Duration _timeout = Duration(seconds: 15);
 
   static final ApiClient _instance = ApiClient._internal();
