@@ -1,4 +1,4 @@
-import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/foundation.dart';
 
 import '../local/pending_sessions_database.dart';
 import '../network/api_client.dart';
@@ -18,21 +18,26 @@ class SyncService {
 
   /// Syncs all pending session bookings for [studentId].
   ///
-  /// Bails out immediately if still offline so the method is safe to call
-  /// optimistically on every connectivity-restored event.
+  /// Returns a [SyncResult] with the number of rows successfully synced and
+  /// a list of error messages for rows that failed.  Callers are responsible
+  /// for verifying connectivity before calling.
   ///
-  /// Each row is POST-ed individually; on success it is marked synced = true.
-  /// Failures are swallowed per-row so one bad booking doesn't block the rest.
-  Future<void> syncPendingSessions(String studentId) async {
-    // Guard: re-check connectivity before hitting the network.
-    final results = await Connectivity().checkConnectivity();
-    final isOnline = results.any((r) => r != ConnectivityResult.none);
-    if (!isOnline) return;
-
+  /// Rows are POSTed individually so one failure doesn't block the rest.
+  Future<SyncResult> syncPendingSessions(String studentId) async {
     final db = PendingSessionsDatabase.instance;
     final pending = await db.getUnsynced(studentId);
 
+    debugPrint('[SyncService] ${pending.length} pending row(s) for studentId=$studentId');
+
+    int synced = 0;
+    final errors = <String>[];
+
     for (final row in pending) {
+      debugPrint(
+        '[SyncService] Posting row id=${row.id} '
+        'tutorId=${row.tutorId} courseId=${row.courseId} '
+        'start=${row.scheduledStart}',
+      );
       try {
         await _apiClient.post('/tutoring-sessions', body: {
           'tutorId': row.tutorId,
@@ -48,11 +53,26 @@ class SyncService {
             'parentAvailabilityId': row.parentAvailabilityId,
           if (row.nextSlotIndex != null) 'slotIndex': row.nextSlotIndex,
         });
-        // Mark synced so the home screen stops showing the ⏳ badge for it.
         await db.markSynced(row.id);
-      } catch (_) {
-        // Leave row as unsynced — will retry on the next connectivity event.
+        synced++;
+        debugPrint('[SyncService] Row ${row.id} → synced OK');
+      } catch (e) {
+        debugPrint('[SyncService] Row ${row.id} → FAILED: $e');
+        errors.add(e.toString());
       }
     }
+
+    debugPrint('[SyncService] Done: synced=$synced errors=${errors.length}');
+    return SyncResult(synced: synced, errors: errors);
   }
+}
+
+class SyncResult {
+  final int synced;
+  final List<String> errors;
+
+  const SyncResult({required this.synced, required this.errors});
+
+  bool get hasErrors => errors.isNotEmpty;
+  bool get allSucceeded => errors.isEmpty && synced > 0;
 }

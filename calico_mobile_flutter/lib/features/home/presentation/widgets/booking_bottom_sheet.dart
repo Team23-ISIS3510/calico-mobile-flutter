@@ -34,6 +34,7 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
   // True when the booking was queued in SQLite because the device was offline.
   bool _savedOffline = false;
   String? _error;
+  double? _successRate;
 
   ({DateTime start, DateTime end}) _bookingWindow() {
     final start = widget.tutor.nextSlotStart;
@@ -167,6 +168,12 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
         _booked = true;
       });
       widget.onBooked?.call();
+      // Fetch the global instant booking success rate to show in the confirmation.
+      // Fire-and-forget: never block or fail the booking on this.
+      client.get('/analytics/booking-success').then((data) {
+        final rate = (data['successRate'] as num?)?.toDouble();
+        if (mounted && rate != null) setState(() => _successRate = rate);
+      }).catchError((_) {});
     } catch (e) {
       setState(() {
         _isLoading = false;
@@ -217,7 +224,7 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
             ),
             const SizedBox(height: 24),
             ElevatedButton(
-              onPressed: () => Navigator.pop(context, false),
+              onPressed: () => Navigator.pop(context, true),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primary,
                 elevation: 0,
@@ -242,6 +249,17 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
               textAlign: TextAlign.center,
               style: AppTextStyles.itemSubtitle,
             ),
+            if (_successRate != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                '${_successRate!.toStringAsFixed(0)}% instant booking success rate',
+                textAlign: TextAlign.center,
+                style: AppTextStyles.itemSubtitle.copyWith(
+                  color: Colors.green.shade700,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
             const SizedBox(height: 24),
             ElevatedButton(
               onPressed: () => Navigator.pop(context, true),

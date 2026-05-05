@@ -17,6 +17,11 @@ class SessionRepositoryImpl implements SessionRepository {
 
   const SessionRepositoryImpl(this._apiClient);
 
+  /// Drops the cached session list so the next [getStudentSessions] call hits
+  /// the server. Call this after a new session is created (e.g. after sync).
+  static void invalidate(String studentId) =>
+      _sessionsCache.invalidate(studentId);
+
   @override
   Future<List<SessionEntity>> getStudentSessions(String studentId) async {
     if (studentId.isEmpty) return [];
