@@ -23,12 +23,14 @@ class CourseDetailScreen extends StatefulWidget {
   final CourseEntity course;
   final String studentId;
   final List<SessionEntity> existingSessions;
+  final bool? isOnCampus;
 
   const CourseDetailScreen({
     super.key,
     required this.course,
     required this.studentId,
     this.existingSessions = const [],
+    this.isOnCampus,
   });
 
   @override
@@ -245,6 +247,7 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
               studentId: widget.studentId,
               courseId: widget.course.id,
               existingSessions: widget.existingSessions,
+              isOnCampus: widget.isOnCampus,
               onTutorTapped: (tutor) {
                 final countdown = tutor.nextSlotStart
                     ?.difference(DateTime.now())
@@ -286,6 +289,7 @@ class _TutorSection extends StatelessWidget {
   final void Function(TutorEntity tutor)? onTutorBooked;
   // True when tutors were served from the Hive cache (device offline).
   final bool fromCache;
+  final bool? isOnCampus;
 
   const _TutorSection({
     required this.tutors,
@@ -297,6 +301,7 @@ class _TutorSection extends StatelessWidget {
     this.onTutorTapped,
     this.onTutorBooked,
     this.fromCache = false,
+    this.isOnCampus,
   });
 
   @override
@@ -408,6 +413,7 @@ class _TutorSection extends StatelessWidget {
                 );
                 return TutorCarouselCard(
                   tutor: tutor,
+                  isOnCampus: isOnCampus,
                   onTap: () async {
                     if (alreadyBooked) {
                       ScaffoldMessenger.of(context).showSnackBar(

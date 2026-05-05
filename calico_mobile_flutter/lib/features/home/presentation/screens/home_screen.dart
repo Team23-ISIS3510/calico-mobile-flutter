@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_text_styles.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/services/campus_location_service.dart';
 import '../../../../core/services/sync_service.dart';
 import '../../../../core/utils/context_aware_helper.dart';
 import '../../../../core/widgets/app_bottom_nav.dart';
@@ -35,7 +36,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   late final HomeController _controller;
   final _searchController = TextEditingController();
   int _selectedTab = 0;
@@ -44,8 +45,10 @@ class _HomeScreenState extends State<HomeScreen> {
   // dispose(); forgetting to do so keeps the callback (and this State) alive
   // and causes setState-after-dispose errors.
   late final StreamSubscription<List<ConnectivityResult>>
-      _connectivitySubscription;
+  _connectivitySubscription;
   bool _isOffline = false;
+  bool? _isOnCampus;
+  bool _isSyncing = false;
 
   @override
   void initState() {
@@ -57,33 +60,43 @@ class _HomeScreenState extends State<HomeScreen> {
       SessionRepositoryImpl(client),
       client,
     );
-    _controller = HomeController(
-      CourseRepositoryImpl(client),
-      tutoringRepo,
-    );
+    _controller = HomeController(CourseRepositoryImpl(client), tutoringRepo);
     _controller.addListener(_onUpdate);
+    WidgetsBinding.instance.addObserver(this);
 
-    _connectivitySubscription =
-        Connectivity().onConnectivityChanged.listen(_onConnectivityChanged);
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen(
+      _onConnectivityChanged,
+    );
+
+    if (widget.studentId.isNotEmpty) {
+      // Startup sync: fire once on launch in case sessions were queued offline
+      // last session. Use the same helper that handles errors and UI updates.
+      Future.microtask(_trySyncIfOnline);
+    }
+
+    CampusLocationService.checkIsOnCampus()
+        .then((result) {
+          if (mounted) setState(() => _isOnCampus = result);
+        })
+        .catchError((_) {});
 
     // Run all I/O in parallel so total latency equals the slowest call.
     // eagerError: false lets partial data render instead of aborting on the
     // first failure, which is the right default for a home feed.
     _controller.markLoading();
-    Future.wait(
-      [
-        _controller.loadCourses(widget.studentId),
-        _controller.loadSessions(widget.studentId),
-        _controller.loadPendingSessions(widget.studentId),
-      ],
-      eagerError: false,
-    ).then((_) {
-      if (!mounted) return;
-      _controller.markSuccess();
-    }).catchError((Object e) {
-      if (!mounted) return;
-      _controller.markFailure(e.toString());
-    });
+    Future.wait([
+          _controller.loadCourses(widget.studentId),
+          _controller.loadSessions(widget.studentId),
+          _controller.loadPendingSessions(widget.studentId),
+        ], eagerError: false)
+        .then((_) {
+          if (!mounted) return;
+          _controller.markSuccess();
+        })
+        .catchError((Object e) {
+          if (!mounted) return;
+          _controller.markFailure(e.toString());
+        });
   }
 
   void _onUpdate() {
@@ -99,16 +112,49 @@ class _HomeScreenState extends State<HomeScreen> {
     // edit, then refresh the controller's pending-session list so ⏳ badges
     // disappear for rows that were just confirmed by the server.
     if (!offline && widget.studentId.isNotEmpty) {
-      final client = ApiClient();
-      SyncService(client).syncPendingSessions(widget.studentId).then((_) {
-        if (!mounted) return;
-        _controller.loadPendingSessions(widget.studentId);
-        _controller.loadSessions(widget.studentId).then((_) {
-          if (mounted) setState(() {});
-        });
-      });
-      ProfileRepositoryImpl(client).syncPendingUpdate(widget.studentId);
+      _trySyncIfOnline();
+      ProfileRepositoryImpl(ApiClient()).syncPendingUpdate(widget.studentId);
     }
+  }
+
+  Future<void> _retrySyncNow() async {
+    final connectivity = await Connectivity().checkConnectivity();
+    final isOnline =
+        connectivity.isNotEmpty &&
+        connectivity.any((r) => r != ConnectivityResult.none);
+
+    if (!isOnline) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No internet connection — try again later.')),
+      );
+      return;
+    }
+
+    if (mounted) setState(() => _isSyncing = true);
+
+    final result = await SyncService(ApiClient()).syncPendingSessions(
+      widget.studentId,
+    );
+
+    if (!mounted) return;
+    setState(() => _isSyncing = false);
+
+    if (result.hasErrors) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Sync failed: ${result.errors.first}'),
+          backgroundColor: Colors.red.shade700,
+          duration: const Duration(seconds: 6),
+        ),
+      );
+    }
+
+    await _controller.loadPendingSessions(widget.studentId);
+    if (result.synced > 0) {
+      await _controller.loadSessions(widget.studentId);
+    }
+    if (mounted) setState(() {});
   }
 
   Future<void> _refreshAll() async {
@@ -131,8 +177,64 @@ class _HomeScreenState extends State<HomeScreen> {
     await _controller.loadData(widget.studentId);
   }
 
+  // Called by Flutter when the app comes back to the foreground.
+  // This is more reliable than the connectivity stream for catching
+  // reconnections that happen while the app is backgrounded.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && widget.studentId.isNotEmpty) {
+      _trySyncIfOnline();
+    }
+  }
+
+  Future<void> _trySyncIfOnline() async {
+    try {
+      final results = await Connectivity().checkConnectivity();
+      final isOnline =
+          results.isNotEmpty &&
+          results.any((r) => r != ConnectivityResult.none);
+      if (!isOnline || !mounted) return;
+
+      if (mounted) setState(() => _isSyncing = true);
+
+      final result = await SyncService(
+        ApiClient(),
+      ).syncPendingSessions(widget.studentId);
+
+      if (!mounted) return;
+      setState(() => _isSyncing = false);
+
+      await _controller.loadPendingSessions(widget.studentId);
+      if (result.synced > 0) {
+        await _controller.loadSessions(widget.studentId);
+      }
+      if (mounted) setState(() {});
+
+      if (result.hasErrors && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Sync error: ${result.errors.first}'),
+            backgroundColor: Colors.red.shade700,
+            duration: const Duration(seconds: 6),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isSyncing = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Sync failed: $e'),
+          backgroundColor: Colors.red.shade700,
+          duration: const Duration(seconds: 6),
+        ),
+      );
+    }
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _controller.removeListener(_onUpdate);
     _controller.dispose();
     _searchController.dispose();
@@ -151,7 +253,7 @@ class _HomeScreenState extends State<HomeScreen> {
             bottom: false,
             child: Column(
               children: [
-                _HomeHeader(),
+                _HomeHeader(isOnCampus: _isOnCampus),
                 if (_isOffline)
                   Container(
                     width: double.infinity,
@@ -162,8 +264,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     child: Text(
                       'Sin conexión — mostrando datos en caché',
-                      style: AppTextStyles.itemSubtitle
-                          .copyWith(color: Colors.white),
+                      style: AppTextStyles.itemSubtitle.copyWith(
+                        color: Colors.white,
+                      ),
                       textAlign: TextAlign.center,
                     ),
                   ),
@@ -295,15 +398,22 @@ class _HomeScreenState extends State<HomeScreen> {
               itemBuilder: (context, index) {
                 final course = recommended[index];
                 return GestureDetector(
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => CourseDetailScreen(
-                        course: course,
-                        studentId: widget.studentId,
+                  onTap: () async {
+                    final booked = await Navigator.push<bool>(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => CourseDetailScreen(
+                          course: course,
+                          studentId: widget.studentId,
+                          isOnCampus: _isOnCampus,
+                        ),
                       ),
-                    ),
-                  ),
+                    );
+                    if (!mounted) return;
+                    await _controller.loadPendingSessions(widget.studentId);
+                    if (booked == true) _controller.loadData(widget.studentId);
+                    if (mounted) setState(() {});
+                  },
                   child: Container(
                     constraints: const BoxConstraints(maxWidth: 200),
                     padding: const EdgeInsets.symmetric(
@@ -352,28 +462,52 @@ class _HomeScreenState extends State<HomeScreen> {
                       course: c,
                       studentId: widget.studentId,
                       existingSessions: _controller.sessions,
+                      isOnCampus: _isOnCampus,
                     ),
                   ),
                 );
-                if (booked == true) {
-                  _controller.loadData(widget.studentId);
-                }
+                if (!mounted) return;
+                await _controller.loadPendingSessions(widget.studentId);
+                if (booked == true) _controller.loadData(widget.studentId);
+                if (mounted) setState(() {});
               },
             ),
           ),
 
         // ── Pending sessions (queued offline in SQLite) ───────────────────
-        // Rows with synced = false. Shown with a ⏳ badge so the student
-        // knows they are not yet server-confirmed. The list refreshes when
-        // SyncService marks them synced after a reconnection.
         if (_controller.pendingSessions.isNotEmpty) ...[
-          const SectionHeader('Pending Sync'),
-          ..._controller.pendingSessions.map(
-            (s) => SessionCard(
-              session: s,
-              showPendingBadge: true,
-              onTap: () {},
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Pending Sync', style: AppTextStyles.sectionTitle),
+                _isSyncing
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppColors.primary,
+                        ),
+                      )
+                    : TextButton.icon(
+                        onPressed: _isOffline ? null : _retrySyncNow,
+                        icon: const Icon(Icons.sync, size: 16),
+                        label: const Text('Retry now'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: AppColors.primary,
+                          padding: EdgeInsets.zero,
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      ),
+              ],
             ),
+          ),
+          ..._controller.pendingSessions.map(
+            (s) =>
+                SessionCard(session: s, showPendingBadge: true, onTap: () {}),
           ),
         ],
 
@@ -396,9 +530,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
         if (_controller.sessionsFromCache)
-          OfflineCacheNotice(
-            lastUpdated: _controller.sessionsLastUpdated,
-          ),
+          OfflineCacheNotice(lastUpdated: _controller.sessionsLastUpdated),
         if (_controller.sessions.isEmpty)
           EmptyStateView(
             widget.studentId.isEmpty
@@ -427,14 +559,52 @@ class _HomeScreenState extends State<HomeScreen> {
 // ─── Private sub-widgets ────────────────────────────────────────────────────
 
 class _HomeHeader extends StatelessWidget {
+  final bool? isOnCampus;
+  const _HomeHeader({this.isOnCampus});
+
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
       color: AppColors.background,
-      child: const Row(
+      child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [AppLogo()],
+        children: [
+          const AppLogo(),
+          if (isOnCampus != null)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: isOnCampus!
+                    ? Colors.green.shade100
+                    : Colors.blue.shade100,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    isOnCampus! ? Icons.school : Icons.laptop,
+                    size: 14,
+                    color: isOnCampus!
+                        ? Colors.green.shade700
+                        : Colors.blue.shade700,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    isOnCampus! ? 'In campus' : 'Virtual',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: isOnCampus!
+                          ? Colors.green.shade700
+                          : Colors.blue.shade700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }

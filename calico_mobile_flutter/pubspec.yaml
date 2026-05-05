@@ -50,6 +50,8 @@ dependencies:
   hive_flutter: ^1.1.0
   # Drift (SQLite ORM) — structured pending-sessions queue with typed queries.
   drift: ^2.22.1
+  # Geolocator — GPS position to detect if user is on campus.
+  geolocator: ^13.0.0
   sqlite3_flutter_libs: ^0.5.0
   path_provider: ^2.1.5
   path: ^1.9.1

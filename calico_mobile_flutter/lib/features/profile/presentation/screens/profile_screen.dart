@@ -415,7 +415,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final year = dt.year.toString();
     final hour = dt.hour.toString().padLeft(2, '0');
     final minute = dt.minute.toString().padLeft(2, '0');
-    final state = entry.success ? 'enviada' : 'fallida';
+    final state = entry.success ? 'enviada' : 'fallida por internet (no se pudo enviar)';
     return '$day/$month/$year $hour:$minute · $state\n${entry.reason}';
   }
 
