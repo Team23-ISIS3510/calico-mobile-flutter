@@ -143,7 +143,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     await _controller.loadPendingSessions(widget.studentId);
     if (result.synced > 0) {
+      // Invalidate stale LRU cache so the reload fetches the confirmed sessions
+      // from the server instead of returning the pre-sync cached list.
+      SessionRepositoryImpl.invalidate(widget.studentId);
       await _controller.loadSessions(widget.studentId);
+
+      if (mounted) {
+        final label = result.synced == 1
+            ? '1 pending booking was confirmed!'
+            : '${result.synced} pending bookings were confirmed!';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(label),
+            backgroundColor: Colors.green.shade700,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
     }
     if (mounted) setState(() {});
   }
@@ -165,6 +181,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       try {
         await ProfileRepositoryImpl(client).syncPendingUpdate(widget.studentId);
       } catch (_) {}
+      // Drop the stale LRU cache whenever we just POSTed new sessions so that
+      // loadData fetches the updated list from the server, not the old snapshot.
       if (syncedSomething) {
         SessionRepositoryImpl.invalidate(widget.studentId);
       }
@@ -205,9 +223,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
       await _controller.loadPendingSessions(widget.studentId);
       if (result.synced > 0) {
+        // Invalidate the stale LRU cache so the next getStudentSessions call
+        // fetches fresh data from the server (which now includes the synced sessions).
+        SessionRepositoryImpl.invalidate(widget.studentId);
         await _controller.loadSessions(widget.studentId);
       }
       if (mounted) setState(() {});
+
+      if (result.synced > 0 && mounted) {
+        final label = result.synced == 1
+            ? '1 pending booking was confirmed!'
+            : '${result.synced} pending bookings were confirmed!';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(label),
+            backgroundColor: Colors.green.shade700,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
 
       if (result.hasErrors && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

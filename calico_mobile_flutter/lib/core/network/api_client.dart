@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import '../errors/app_exception.dart';
 
@@ -29,6 +30,10 @@ class ApiClient {
       throw const AppException(
         'Request timed out. Check your connection and try again.',
       );
+    } on SocketException {
+      throw const AppException(
+        'No internet connection. Please try again later.',
+      );
     } on http.ClientException catch (e) {
       throw AppException('Connection error: ${e.message}');
     } on FormatException {
@@ -54,6 +59,10 @@ class ApiClient {
       throw const AppException(
         'Request timed out. Check your connection and try again.',
       );
+    } on SocketException {
+      throw const AppException(
+        'No internet connection. Please try again later.',
+      );
     } on http.ClientException catch (e) {
       throw AppException('Connection error: ${e.message}');
     } on FormatException {
@@ -78,6 +87,10 @@ class ApiClient {
     } on TimeoutException {
       throw const AppException(
         'Request timed out. Check your connection and try again.',
+      );
+    } on SocketException {
+      throw const AppException(
+        'No internet connection. Please try again later.',
       );
     } on http.ClientException catch (e) {
       throw AppException('Connection error: ${e.message}');
