@@ -18,6 +18,7 @@ import '../../data/repositories/session_repository_impl.dart';
 import '../../domain/entities/course_entity.dart';
 import '../../domain/entities/session_entity.dart';
 import '../../domain/services/course_session_recency.dart';
+import '../../domain/services/courses_view_snapshot_isolate.dart';
 import '../widgets/course_card.dart';
 import 'course_detail_screen.dart';
 
@@ -47,7 +48,22 @@ class _CoursesScreenState extends State<CoursesScreen> {
 
   List<CourseEntity> _allCourses = const [];
   List<CourseEntity> _visibleCourses = const [];
+  // Held in-memory so the favorites strip can keep rendering recency labels
+  // without re-running the isolate when the toggle button is tapped.
   Map<String, int> _daysSinceLastSession = const {};
+  // Materialized result of the most recent snapshot isolate run. Ordering is
+  // authoritative — the UI iterates this list directly.
+  List<CourseEntity> _sortedFavoriteCourses = const [];
+  // Last sessions list pulled by [_loadData]. Cached so a favorites toggle can
+  // re-run the snapshot isolate without re-fetching from the network.
+  List<SessionEntity> _lastSessionsSnapshot = const [];
+  // Monotonic counter used to discard stale isolate results (snapshot or
+  // search) that resolve after a newer invocation has been queued.
+  int _snapshotSeq = 0;
+  int _searchSeq = 0;
+  Timer? _searchDebounce;
+  static const Duration _searchDebounceDelay = Duration(milliseconds: 300);
+
   String _lastSearchQuery = '';
   bool _isLoading = true;
   bool _loadFailed = false;
@@ -84,12 +100,19 @@ class _CoursesScreenState extends State<CoursesScreen> {
   void dispose() {
     FavoriteCoursesRepository.changes.removeListener(_onFavoritesChanged);
     _connectivitySub?.cancel();
+    _searchDebounce?.cancel();
     _searchController.dispose();
     super.dispose();
   }
 
   void _onFavoritesChanged() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    // Rebuild synchronously so the heart icon on each row flips on the same
+    // frame as the tap — readability of the toggle matters more than a tiny
+    // setState. The favorites strip re-sort runs on the isolate; it'll
+    // overwrite [_sortedFavoriteCourses] when ready.
+    setState(() {});
+    _runSnapshot(_lastSessionsSnapshot);
   }
 
   void _onConnectivityChanged(List<ConnectivityResult> results) {
@@ -129,13 +152,18 @@ class _CoursesScreenState extends State<CoursesScreen> {
 
       setState(() {
         _allCourses = courses;
-        _daysSinceLastSession =
-            CourseSessionRecency.daysSinceLastSessionByCourse(sessions);
+        _lastSessionsSnapshot = sessions;
         _isLoading = false;
         _loadFailed = false;
         _servedFromCacheFallback = false;
-        _applyCurrentQuery();
       });
+
+      // BQ6 (per-favorite recency) and the favorites sort run on a background
+      // isolate so a large session history never blocks the frame that just
+      // hid the spinner. Re-apply the active search query on the same beat so
+      // the All-Courses list is consistent with whatever is typed.
+      _runSnapshot(sessions);
+      _runFilter(_lastSearchQuery, immediate: true);
     } catch (_) {
       if (!mounted) return;
       // Cache may still hold data from a previous load — keep showing it.
@@ -148,6 +176,34 @@ class _CoursesScreenState extends State<CoursesScreen> {
     }
   }
 
+  /// Offloads BQ6 + favorites ordering to a background isolate.
+  ///
+  /// Stale results from prior calls (e.g. the snapshot from a `_loadData` that
+  /// resolved after a faster favorites-toggle re-run) are discarded by
+  /// comparing the captured sequence number against [_snapshotSeq].
+  void _runSnapshot(List<SessionEntity> sessions) {
+    final seq = ++_snapshotSeq;
+    final favoriteIds = FavoriteCoursesRepository.ids;
+    prepareCoursesViewInIsolate(
+      sessions: sessions,
+      favoriteIds: favoriteIds,
+      allCourses: _allCourses,
+    ).then((snapshot) {
+      if (!mounted || seq != _snapshotSeq) return;
+      // Re-resolve IDs against _allCourses on the main thread — cheap O(n)
+      // hash lookup, keeps CourseEntity off the isolate boundary.
+      final coursesById = {for (final c in _allCourses) c.id: c};
+      final ordered = <CourseEntity>[
+        for (final id in snapshot.sortedFavoriteCourseIds)
+          if (coursesById[id] != null) coursesById[id]!,
+      ];
+      setState(() {
+        _daysSinceLastSession = snapshot.daysSinceLastSession;
+        _sortedFavoriteCourses = ordered;
+      });
+    });
+  }
+
   Future<void> _refresh() async {
     // Pull-to-refresh: force a network fetch by dropping the LRU entries.
     CourseRepositoryImpl.invalidate();
@@ -158,31 +214,35 @@ class _CoursesScreenState extends State<CoursesScreen> {
     await _loadData();
   }
 
+  /// Keystroke handler. Debounces by [_searchDebounceDelay] before spawning
+  /// the isolate so a fast typist fires one isolate run per word rather than
+  /// per character (covers Micro-optimization 5 from Sprint 4).
   void _onSearchChanged(String query) {
     _lastSearchQuery = query;
-    if (_allCourses.isEmpty) return;
-    filterCoursesInIsolate(_allCourses, query).then((filtered) {
-      // Discard out-of-order isolate results from earlier keystrokes.
-      if (!mounted || _lastSearchQuery != query) return;
-      setState(() => _visibleCourses = filtered);
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(_searchDebounceDelay, () {
+      _runFilter(query, immediate: true);
     });
   }
 
-  /// Re-applies the active search query against [_allCourses]. Called after a
-  /// successful (re)load so the search field doesn't reset when data refreshes.
-  void _applyCurrentQuery() {
-    final q = _lastSearchQuery;
-    if (q.isEmpty) {
-      _visibleCourses = _allCourses;
+  /// Runs the course filter through [filterCoursesInIsolate].
+  ///
+  /// Both keystroke search (after debounce) and data-reload re-application go
+  /// through this single path so the CPU work always happens off the main
+  /// thread. Stale results are discarded with [_searchSeq] in case a later
+  /// query resolves first.
+  void _runFilter(String query, {bool immediate = false}) {
+    final seq = ++_searchSeq;
+    if (query.isEmpty) {
+      // Empty query is the no-op fast path — assign synchronously, no isolate.
+      setState(() => _visibleCourses = _allCourses);
       return;
     }
-    _visibleCourses = _allCourses
-        .where(
-          (c) =>
-              c.name.toLowerCase().contains(q.toLowerCase()) ||
-              c.code.toLowerCase().contains(q.toLowerCase()),
-        )
-        .toList(growable: false);
+    if (_allCourses.isEmpty) return;
+    filterCoursesInIsolate(_allCourses, query).then((filtered) {
+      if (!mounted || seq != _searchSeq) return;
+      setState(() => _visibleCourses = filtered);
+    });
   }
 
   Future<void> _openCourse(CourseEntity course) async {
@@ -199,33 +259,11 @@ class _CoursesScreenState extends State<CoursesScreen> {
     await _loadData(silent: true);
   }
 
-  List<CourseEntity> _sortedFavoriteCourses(Set<String> favoriteIds) {
-    final favorites = _allCourses
-        .where((course) => favoriteIds.contains(course.id))
-        .toList(growable: true);
-
-    favorites.sort((a, b) {
-      final daysA = _daysSinceLastSession[a.id];
-      final daysB = _daysSinceLastSession[b.id];
-
-      if (daysA == null && daysB == null) {
-        return a.name.compareTo(b.name);
-      }
-      if (daysA == null) return -1;
-      if (daysB == null) return 1;
-      final byRecency = daysB.compareTo(daysA);
-      return byRecency != 0 ? byRecency : a.name.compareTo(b.name);
-    });
-
-    return favorites;
-  }
-
   int? _daysSinceForCourse(String courseId) => _daysSinceLastSession[courseId];
 
   @override
   Widget build(BuildContext context) {
-    final favoriteIds = FavoriteCoursesRepository.ids;
-    final favoriteCourses = _sortedFavoriteCourses(favoriteIds);
+    final favoriteCourses = _sortedFavoriteCourses;
 
     return Scaffold(
       backgroundColor: AppColors.background,

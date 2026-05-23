@@ -21,10 +21,15 @@ class AppDatabaseService {
   static const String _dbFileName = 'calico_cache.db';
   // v2: the cached_available_tutors table moved to a Hive box. The migration
   // in _onUpgrade drops it on existing installs.
-  static const int _dbVersion = 2;
+  // v3: added remote-first L2 caches for the full course catalog (single row)
+  // and the full per-student session history (used by the Courses screen +
+  // BQ6 recency computation).
+  static const int _dbVersion = 3;
 
   static const String tableUpcomingSessions = 'cache_upcoming_sessions';
   static const String tableGoToTutor = 'cached_go_to_tutor';
+  static const String tableCoursesCatalog = 'cache_courses_catalog';
+  static const String tableStudentSessionsFull = 'cache_student_sessions_full';
 
   Database? _db;
   Completer<Database>? _opening;
@@ -75,6 +80,8 @@ class AppDatabaseService {
         PRIMARY KEY (student_id, course_id)
       )
     ''');
+    await _createCoursesCatalog(db);
+    await _createStudentSessionsFull(db);
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -82,6 +89,38 @@ class AppDatabaseService {
       // v1 kept the tutor carousel in SQLite; v2 moved it to Hive.
       await db.execute('DROP TABLE IF EXISTS cached_available_tutors');
     }
+    if (oldVersion < 3) {
+      await _createCoursesCatalog(db);
+      await _createStudentSessionsFull(db);
+    }
+  }
+
+  // ── v3 schema ─────────────────────────────────────────────────────────────
+
+  // Catalog is shared across students, so a single fixed-key row is enough.
+  // The 'id' column is reserved for that key (e.g. 'all'); future variants
+  // (filtered catalogs, per-faculty subsets) could reuse the same table.
+  Future<void> _createCoursesCatalog(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS $tableCoursesCatalog (
+        id TEXT PRIMARY KEY,
+        payload TEXT NOT NULL,
+        last_updated INTEGER NOT NULL
+      )
+    ''');
+  }
+
+  // Holds the FULL student session list (past + upcoming), feeding BQ6 and
+  // any other recency analytics. Kept separate from [tableUpcomingSessions]
+  // which only stores the filtered upcoming subset for Home.
+  Future<void> _createStudentSessionsFull(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS $tableStudentSessionsFull (
+        student_id TEXT PRIMARY KEY,
+        payload TEXT NOT NULL,
+        last_updated INTEGER NOT NULL
+      )
+    ''');
   }
 
   Future<void> upsert(String table, Map<String, Object?> values) async {
@@ -118,6 +157,8 @@ class AppDatabaseService {
     final batch = db.batch();
     batch.delete(tableUpcomingSessions);
     batch.delete(tableGoToTutor);
+    batch.delete(tableCoursesCatalog);
+    batch.delete(tableStudentSessionsFull);
     await batch.commit(noResult: true);
   }
 
