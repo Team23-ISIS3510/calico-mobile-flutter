@@ -41,6 +41,13 @@ class HomeController extends ChangeNotifier {
   // must be rebuilt before use.
   ArrayMap<String, int>? _sessionCountCache;
 
+  // Micro-optimization 2: cached recommended courses list.
+  // Rebuilt only when _sessions or _allCourses change (via loadSessions /
+  // loadCourses). The public getter returns this list as-is, so rebuilds
+  // triggered by unrelated notifyListeners() calls (e.g. each keystroke in
+  // the search bar) no longer re-run sort + map + toList.
+  List<CourseEntity> _recommendedCourses = const [];
+
   // Tracks the most recent search query to discard stale isolate results.
   String _lastSearchQuery = '';
 
@@ -54,16 +61,22 @@ class HomeController extends ChangeNotifier {
   bool get isLoading => _status == HomeStatus.loading;
 
   /// Top 3 courses the student has had the most sessions in.
-  List<CourseEntity> get recommendedCourses {
-    if (_sessions.isEmpty || _allCourses.isEmpty) return [];
+  /// Reads from a precomputed cache; no work is done on each access.
+  List<CourseEntity> get recommendedCourses => _recommendedCourses;
+
+  void _rebuildRecommendedCourses() {
+    if (_sessions.isEmpty || _allCourses.isEmpty) {
+      _recommendedCourses = const [];
+      return;
+    }
     _sessionCountCache ??= _buildSessionCounts();
     final courseMap = {for (final c in _allCourses) c.id: c};
-    return (_sessionCountCache!.entries.toList()
+    _recommendedCourses = (_sessionCountCache!.entries.toList()
           ..sort((a, b) => b.value.compareTo(a.value)))
         .take(3)
         .map((e) => courseMap[e.key])
         .whereType<CourseEntity>()
-        .toList();
+        .toList(growable: false);
   }
 
   ArrayMap<String, int> _buildSessionCounts() {
@@ -105,6 +118,7 @@ class HomeController extends ChangeNotifier {
   Future<void> loadCourses(String studentId) async {
     _allCourses = await _courseRepo.getCourses();
     _filteredCourses = List.from(_allCourses);
+    _rebuildRecommendedCourses();
   }
 
   /// Fetches upcoming sessions for [studentId], via the StudentTutoring
@@ -116,6 +130,7 @@ class HomeController extends ChangeNotifier {
     _sessionsFromCache = result.isFromCache;
     _sessionsLastUpdated = result.lastUpdated;
     _sessionCountCache = null; // invalidate so recommendedCourses rebuilds
+    _rebuildRecommendedCourses();
   }
 
   /// Reads all unsynced rows from the local pending_sessions table and

@@ -29,6 +29,10 @@ class CourseRepositoryImpl implements CourseRepository {
 
   const CourseRepositoryImpl(this._apiClient);
 
+  /// Drops the cached course list so the next [getCourses] call hits the server.
+  /// Call this when a pull-to-refresh explicitly requests fresh data.
+  static void invalidate() => _courseCache.invalidate(_cacheKey);
+
   @override
   Future<List<CourseEntity>> getCourses() async {
     final cached = _courseCache.get(_cacheKey);

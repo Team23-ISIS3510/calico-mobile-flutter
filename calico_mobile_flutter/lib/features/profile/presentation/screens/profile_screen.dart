@@ -11,6 +11,7 @@ import 'package:calico_mobile_flutter/core/services/motion_alert_coordinator.dar
 import 'package:calico_mobile_flutter/core/services/motion_alert_file_log.dart';
 import 'package:calico_mobile_flutter/core/services/motion_alert_preferences.dart';
 import 'package:calico_mobile_flutter/features/auth/presentation/screens/login_screen.dart';
+import 'package:calico_mobile_flutter/features/home/data/repositories/session_repository_impl.dart';
 import 'package:calico_mobile_flutter/features/profile/data/repositories/profile_repository_impl.dart';
 import 'package:calico_mobile_flutter/features/profile/domain/models/user_profile.dart';
 import 'package:calico_mobile_flutter/features/profile/presentation/controllers/profile_controller.dart';
@@ -468,6 +469,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     try {
       await MotionAlertCoordinator.instance.clearLocalDataForLogout();
+      // Drop the in-memory session cache so a subsequent login always fetches
+      // fresh data from the server and never shows a pre-logout stale list.
+      SessionRepositoryImpl.invalidate(widget.userId);
       await FirebaseAuth.instance.signOut();
       if (!mounted) return;
       setState(() {
