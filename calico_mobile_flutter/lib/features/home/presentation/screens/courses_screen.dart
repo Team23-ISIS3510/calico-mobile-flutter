@@ -14,7 +14,10 @@ import '../../../../core/widgets/section_header.dart';
 import '../../../profile/presentation/screens/profile_screen.dart';
 import '../../data/repositories/course_repository_impl.dart';
 import '../../data/repositories/favorite_courses_repository.dart';
+import '../../data/repositories/session_repository_impl.dart';
 import '../../domain/entities/course_entity.dart';
+import '../../domain/entities/session_entity.dart';
+import '../../domain/services/course_session_recency.dart';
 import '../widgets/course_card.dart';
 import 'course_detail_screen.dart';
 
@@ -40,9 +43,11 @@ class CoursesScreen extends StatefulWidget {
 class _CoursesScreenState extends State<CoursesScreen> {
   final _searchController = TextEditingController();
   final CourseRepositoryImpl _repo = CourseRepositoryImpl(ApiClient());
+  final SessionRepositoryImpl _sessionRepo = SessionRepositoryImpl(ApiClient());
 
   List<CourseEntity> _allCourses = const [];
   List<CourseEntity> _visibleCourses = const [];
+  Map<String, int> _daysSinceLastSession = const {};
   String _lastSearchQuery = '';
   bool _isLoading = true;
   bool _loadFailed = false;
@@ -72,7 +77,7 @@ class _CoursesScreenState extends State<CoursesScreen> {
     // will rebuild once they arrive.
     FavoriteCoursesRepository.load();
 
-    _loadCourses();
+    _loadData();
   }
 
   @override
@@ -96,11 +101,11 @@ class _CoursesScreenState extends State<CoursesScreen> {
     // Silent refresh: if we were showing stale cache (because the last fetch
     // failed) and we just regained network, re-fetch in the background.
     if (!offline && _servedFromCacheFallback) {
-      _loadCourses(silent: true);
+      _loadData(silent: true);
     }
   }
 
-  Future<void> _loadCourses({bool silent = false}) async {
+  Future<void> _loadData({bool silent = false}) async {
     if (!silent) {
       setState(() {
         _isLoading = true;
@@ -108,10 +113,24 @@ class _CoursesScreenState extends State<CoursesScreen> {
       });
     }
     try {
-      final courses = await _repo.getCourses();
+      final studentId = widget.studentId.trim();
+      final coursesFuture = _repo.getCourses();
+      final sessionsFuture = studentId.isEmpty
+          ? Future<List<SessionEntity>>.value(const [])
+          : _sessionRepo.getStudentSessions(studentId);
+
+      final results = await Future.wait([
+        coursesFuture,
+        sessionsFuture,
+      ]);
+      final courses = results[0] as List<CourseEntity>;
+      final sessions = results[1] as List<SessionEntity>;
       if (!mounted) return;
+
       setState(() {
         _allCourses = courses;
+        _daysSinceLastSession =
+            CourseSessionRecency.daysSinceLastSessionByCourse(sessions);
         _isLoading = false;
         _loadFailed = false;
         _servedFromCacheFallback = false;
@@ -130,9 +149,13 @@ class _CoursesScreenState extends State<CoursesScreen> {
   }
 
   Future<void> _refresh() async {
-    // Pull-to-refresh: force a network fetch by dropping the LRU entry.
+    // Pull-to-refresh: force a network fetch by dropping the LRU entries.
     CourseRepositoryImpl.invalidate();
-    await _loadCourses();
+    final studentId = widget.studentId.trim();
+    if (studentId.isNotEmpty) {
+      SessionRepositoryImpl.invalidate(studentId);
+    }
+    await _loadData();
   }
 
   void _onSearchChanged(String query) {
@@ -172,14 +195,37 @@ class _CoursesScreenState extends State<CoursesScreen> {
         ),
       ),
     );
+    if (!mounted) return;
+    await _loadData(silent: true);
   }
+
+  List<CourseEntity> _sortedFavoriteCourses(Set<String> favoriteIds) {
+    final favorites = _allCourses
+        .where((course) => favoriteIds.contains(course.id))
+        .toList(growable: true);
+
+    favorites.sort((a, b) {
+      final daysA = _daysSinceLastSession[a.id];
+      final daysB = _daysSinceLastSession[b.id];
+
+      if (daysA == null && daysB == null) {
+        return a.name.compareTo(b.name);
+      }
+      if (daysA == null) return -1;
+      if (daysB == null) return 1;
+      final byRecency = daysB.compareTo(daysA);
+      return byRecency != 0 ? byRecency : a.name.compareTo(b.name);
+    });
+
+    return favorites;
+  }
+
+  int? _daysSinceForCourse(String courseId) => _daysSinceLastSession[courseId];
 
   @override
   Widget build(BuildContext context) {
     final favoriteIds = FavoriteCoursesRepository.ids;
-    final favoriteCourses = _allCourses
-        .where((c) => favoriteIds.contains(c.id))
-        .toList(growable: false);
+    final favoriteCourses = _sortedFavoriteCourses(favoriteIds);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -261,7 +307,7 @@ class _CoursesScreenState extends State<CoursesScreen> {
                 ),
                 const SizedBox(height: 16),
                 TextButton(
-                  onPressed: _loadCourses,
+                  onPressed: () => _loadData(),
                   child: Text(
                     'Retry',
                     style: AppTextStyles.buttonLabel.copyWith(
@@ -288,7 +334,7 @@ class _CoursesScreenState extends State<CoursesScreen> {
         else
           SliverToBoxAdapter(
             child: SizedBox(
-              height: 96,
+              height: 118,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -296,8 +342,10 @@ class _CoursesScreenState extends State<CoursesScreen> {
                 separatorBuilder: (_, _) => const SizedBox(width: 12),
                 itemBuilder: (context, index) {
                   final course = favoriteCourses[index];
+                  final daysSince = _daysSinceForCourse(course.id);
                   return _FavoriteCourseChip(
                     course: course,
+                    daysSinceLastSession: daysSince,
                     onTap: () => _openCourse(course),
                   );
                 },
@@ -445,20 +493,32 @@ class _CoursesSearchBar extends StatelessWidget {
 
 class _FavoriteCourseChip extends StatelessWidget {
   final CourseEntity course;
+  final int? daysSinceLastSession;
   final VoidCallback onTap;
 
-  const _FavoriteCourseChip({required this.course, required this.onTap});
+  const _FavoriteCourseChip({
+    required this.course,
+    required this.daysSinceLastSession,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final recencyLabel =
+        CourseSessionRecency.labelFor(daysSinceLastSession);
+    final showNudge = CourseSessionRecency.shouldNudge(daysSinceLastSession);
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        constraints: const BoxConstraints(maxWidth: 220, minWidth: 160),
+        constraints: const BoxConstraints(maxWidth: 240, minWidth: 176),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
           color: AppColors.inputBackground,
           borderRadius: BorderRadius.circular(12),
+          border: showNudge
+              ? Border.all(color: AppColors.primary.withValues(alpha: 0.45))
+              : null,
         ),
         child: Row(
           children: [
@@ -481,6 +541,26 @@ class _FavoriteCourseChip extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
+                  const SizedBox(height: 4),
+                  Text(
+                    recencyLabel,
+                    style: AppTextStyles.itemSubtitle.copyWith(fontSize: 11),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (showNudge) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      CourseSessionRecency.nudgeLabel(daysSinceLastSession),
+                      style: AppTextStyles.itemSubtitle.copyWith(
+                        fontSize: 11,
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ],
               ),
             ),
