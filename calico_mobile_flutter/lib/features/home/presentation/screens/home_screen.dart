@@ -24,6 +24,7 @@ import '../controllers/home_controller.dart';
 import '../widgets/course_card.dart';
 import '../widgets/session_card.dart';
 import 'course_detail_screen.dart';
+import 'courses_screen.dart';
 import 'session_detail_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -188,6 +189,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
     }
 
+    // Always invalidate the course cache on an explicit pull-to-refresh so the
+    // user sees the latest catalogue from the server, not a stale 10-min snapshot.
+    CourseRepositoryImpl.invalidate();
     await _controller.loadData(widget.studentId);
   }
 
@@ -329,6 +333,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         selectedIndex: _selectedTab,
         onTap: (i) {
           if (i == 1) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => CoursesScreen(studentId: widget.studentId),
+              ),
+            );
+            return;
+          }
+          if (i == 2) {
             if (widget.studentId.trim().isEmpty) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
@@ -351,9 +364,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 builder: (_) => ProfileScreen(userId: widget.studentId),
               ),
             );
-          } else {
-            setState(() => _selectedTab = i);
+            return;
           }
+          setState(() => _selectedTab = i);
         },
       ),
     );
@@ -411,183 +424,248 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
 
     final recommended = _controller.recommendedCourses;
+    final courses = _controller.courses;
+    final pending = _controller.pendingSessions;
+    final sessions = _controller.sessions;
 
-    return ListView(
+    // Micro-optimization 1: lazy lists via CustomScrollView + SliverList.builder.
+    // Items are built on demand as they enter the viewport instead of eagerly
+    // materializing every CourseCard / SessionCard on the first frame.
+    return CustomScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
-      children: [
+      slivers: [
         // ── Recommended for you ──────────────────────────────────────────
         if (widget.studentId.isNotEmpty && recommended.isNotEmpty) ...[
-          const SectionHeader('Recommended for you'),
-          SizedBox(
-            height: 80,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: recommended.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 12),
-              itemBuilder: (context, index) {
-                final course = recommended[index];
-                return GestureDetector(
-                  onTap: () async {
-                    final booked = await Navigator.push<bool>(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => CourseDetailScreen(
-                          course: course,
-                          studentId: widget.studentId,
-                          existingSessions: [
-                            ..._controller.sessions,
-                            ..._controller.pendingSessions,
-                          ],
-                          isOnCampus: _isOnCampus,
+          const SliverToBoxAdapter(
+            child: SectionHeader('Recommended for you'),
+          ),
+          SliverToBoxAdapter(
+            child: SizedBox(
+              height: 80,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                itemCount: recommended.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 12),
+                itemBuilder: (context, index) {
+                  final course = recommended[index];
+                  return GestureDetector(
+                    onTap: () async {
+                      final booked = await Navigator.push<bool>(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => CourseDetailScreen(
+                            course: course,
+                            studentId: widget.studentId,
+                            existingSessions: [
+                              ..._controller.sessions,
+                              ..._controller.pendingSessions,
+                            ],
+                            isOnCampus: _isOnCampus,
+                          ),
                         ),
+                      );
+                      if (!mounted) return;
+                      await _controller.loadPendingSessions(widget.studentId);
+                      if (booked == true) {
+                        _controller.loadData(widget.studentId);
+                      }
+                      if (mounted) setState(() {});
+                    },
+                    child: Container(
+                      constraints: const BoxConstraints(maxWidth: 200),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
                       ),
-                    );
-                    if (!mounted) return;
-                    await _controller.loadPendingSessions(widget.studentId);
-                    if (booked == true) _controller.loadData(widget.studentId);
-                    if (mounted) setState(() {});
-                  },
-                  child: Container(
-                    constraints: const BoxConstraints(maxWidth: 200),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
+                      decoration: BoxDecoration(
+                        color: AppColors.inputBackground,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            course.name,
+                            style: AppTextStyles.itemTitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(course.code, style: AppTextStyles.itemSubtitle),
+                        ],
+                      ),
                     ),
-                    decoration: BoxDecoration(
-                      color: AppColors.inputBackground,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          course.name,
-                          style: AppTextStyles.itemTitle,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 2),
-                        Text(course.code, style: AppTextStyles.itemSubtitle),
-                      ],
-                    ),
-                  ),
-                );
-              },
+                  );
+                },
+              ),
             ),
           ),
-          const SizedBox(height: 8),
+          const SliverToBoxAdapter(child: SizedBox(height: 8)),
         ],
 
-        // ── Courses ──────────────────────────────────────────────────────
-        const SectionHeader('Courses'),
-        if (_controller.courses.isEmpty)
-          const EmptyStateView('No courses found')
-        else
-          ..._controller.courses.map(
-            (c) => CourseCard(
-              course: c,
-              onTap: () async {
-                final booked = await Navigator.push<bool>(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => CourseDetailScreen(
-                      course: c,
-                      studentId: widget.studentId,
-                      existingSessions: [
-                        ..._controller.sessions,
-                        ..._controller.pendingSessions,
-                      ],
-                      isOnCampus: _isOnCampus,
-                    ),
-                  ),
-                );
-                if (!mounted) return;
-                await _controller.loadPendingSessions(widget.studentId);
-                if (booked == true) _controller.loadData(widget.studentId);
-                if (mounted) setState(() {});
-              },
-            ),
-          ),
-
-        // ── Pending sessions (queued offline in SQLite) ───────────────────
-        if (_controller.pendingSessions.isNotEmpty) ...[
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Pending Sync', style: AppTextStyles.sectionTitle),
-                _isSyncing
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: AppColors.primary,
-                        ),
-                      )
-                    : TextButton.icon(
-                        onPressed: _isOffline ? null : _retrySyncNow,
-                        icon: const Icon(Icons.sync, size: 16),
-                        label: const Text('Retry now'),
-                        style: TextButton.styleFrom(
-                          foregroundColor: AppColors.primary,
-                          padding: EdgeInsets.zero,
-                          minimumSize: Size.zero,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                      ),
-              ],
-            ),
-          ),
-          ..._controller.pendingSessions.map(
-            (s) =>
-                SessionCard(session: s, showPendingBadge: true, onTap: () {}),
-          ),
-        ],
-
-        // ── Confirmed sessions ────────────────────────────────────────────
-        const SectionHeader('Upcoming Sessions'),
-        if (_isOffline || _controller.sessionsFromCache)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
-            child: Row(
-              children: [
-                Icon(Icons.cloud_off, size: 13, color: Colors.orange.shade600),
-                const SizedBox(width: 4),
-                Text(
-                  'Loading data from cache',
-                  style: AppTextStyles.itemSubtitle.copyWith(
-                    color: Colors.orange.shade600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        if (_controller.sessionsFromCache)
-          OfflineCacheNotice(lastUpdated: _controller.sessionsLastUpdated),
-        if (_controller.sessions.isEmpty)
-          EmptyStateView(
-            widget.studentId.isEmpty
-                ? 'Sign in to see your sessions'
-                : 'No upcoming sessions',
+        // ── Courses (preview, up to 4) ───────────────────────────────────
+        const SliverToBoxAdapter(
+          child: SectionHeader('4 of your most recent courses'),
+        ),
+        if (courses.isEmpty)
+          const SliverToBoxAdapter(
+            child: EmptyStateView('No courses found'),
           )
         else
-          ..._controller.sessions.map(
-            (s) => SessionCard(
-              session: s,
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => SessionDetailScreen(session: s),
+          SliverList.builder(
+            itemCount: courses.length > 4 ? 4 : courses.length,
+            itemBuilder: (context, index) {
+              final c = courses[index];
+              return CourseCard(
+                course: c,
+                onTap: () async {
+                  final booked = await Navigator.push<bool>(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => CourseDetailScreen(
+                        course: c,
+                        studentId: widget.studentId,
+                        existingSessions: [
+                          ..._controller.sessions,
+                          ..._controller.pendingSessions,
+                        ],
+                        isOnCampus: _isOnCampus,
+                      ),
+                    ),
+                  );
+                  if (!mounted) return;
+                  await _controller.loadPendingSessions(widget.studentId);
+                  if (booked == true) _controller.loadData(widget.studentId);
+                  if (mounted) setState(() {});
+                },
+              );
+            },
+          ),
+        if (courses.length > 4)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          CoursesScreen(studentId: widget.studentId),
+                    ),
+                  ),
+                  icon: const Icon(Icons.arrow_forward, size: 16),
+                  label: const Text('See all courses'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppColors.primary,
+                  ),
                 ),
               ),
             ),
           ),
 
-        const SizedBox(height: 24),
+        // ── Pending sessions (queued offline in SQLite) ───────────────────
+        if (pending.isNotEmpty) ...[
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Pending Sync', style: AppTextStyles.sectionTitle),
+                  _isSyncing
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppColors.primary,
+                          ),
+                        )
+                      : TextButton.icon(
+                          onPressed: _isOffline ? null : _retrySyncNow,
+                          icon: const Icon(Icons.sync, size: 16),
+                          label: const Text('Retry now'),
+                          style: TextButton.styleFrom(
+                            foregroundColor: AppColors.primary,
+                            padding: EdgeInsets.zero,
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                        ),
+                ],
+              ),
+            ),
+          ),
+          SliverList.builder(
+            itemCount: pending.length,
+            itemBuilder: (context, index) => SessionCard(
+              session: pending[index],
+              showPendingBadge: true,
+              onTap: () {},
+            ),
+          ),
+        ],
+
+        // ── Confirmed sessions ────────────────────────────────────────────
+        const SliverToBoxAdapter(child: SectionHeader('Upcoming Sessions')),
+        if (_isOffline || _controller.sessionsFromCache)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.cloud_off,
+                    size: 13,
+                    color: Colors.orange.shade600,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Loading data from cache',
+                    style: AppTextStyles.itemSubtitle.copyWith(
+                      color: Colors.orange.shade600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        if (_controller.sessionsFromCache)
+          SliverToBoxAdapter(
+            child: OfflineCacheNotice(
+              lastUpdated: _controller.sessionsLastUpdated,
+            ),
+          ),
+        if (sessions.isEmpty)
+          SliverToBoxAdapter(
+            child: EmptyStateView(
+              widget.studentId.isEmpty
+                  ? 'Sign in to see your sessions'
+                  : 'No upcoming sessions',
+            ),
+          )
+        else
+          SliverList.builder(
+            itemCount: sessions.length,
+            itemBuilder: (context, index) {
+              final s = sessions[index];
+              return SessionCard(
+                session: s,
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => SessionDetailScreen(session: s),
+                  ),
+                ),
+              );
+            },
+          ),
+
+        const SliverToBoxAdapter(child: SizedBox(height: 24)),
       ],
     );
   }
