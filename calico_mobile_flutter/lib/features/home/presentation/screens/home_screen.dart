@@ -157,14 +157,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     if (isOnline && widget.studentId.isNotEmpty) {
       // Best effort: refresh should not fail if sync endpoints are temporarily unavailable.
+      bool syncedSomething = false;
       try {
-        await SyncService(client).syncPendingSessions(widget.studentId);
+        final result = await SyncService(client).syncPendingSessions(widget.studentId);
+        syncedSomething = result.synced > 0;
       } catch (_) {}
       try {
         await ProfileRepositoryImpl(client).syncPendingUpdate(widget.studentId);
       } catch (_) {}
+      if (syncedSomething) {
+        SessionRepositoryImpl.invalidate(widget.studentId);
+      }
     }
 
+    // Always invalidate the course cache on an explicit pull-to-refresh so the
+    // user sees the latest catalogue from the server, not a stale 10-min snapshot.
+    CourseRepositoryImpl.invalidate();
     await _controller.loadData(widget.studentId);
   }
 
