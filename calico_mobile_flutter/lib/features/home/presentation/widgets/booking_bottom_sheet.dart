@@ -5,6 +5,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_text_styles.dart';
 import '../../../../core/local/pending_sessions_database.dart';
 import '../../../../core/network/api_client.dart';
+import '../../data/repositories/session_repository_impl.dart';
 import '../../domain/entities/tutor_entity.dart';
 
 class BookingBottomSheet extends StatefulWidget {
@@ -88,7 +89,26 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
     return '$day  ${fmt(start)} – ${fmt(end)}';
   }
 
+  String _friendlyBookingError(Object error) {
+    final message = error.toString().toLowerCase();
+    if (message.contains('socket') ||
+        message.contains('network') ||
+        message.contains('connection')) {
+      return 'No connection. Check your internet and try again.';
+    }
+    if (message.contains('401') || message.contains('403')) {
+      return 'Your session expired. Please sign in again.';
+    }
+    return 'Could not complete the booking. Please try again.';
+  }
+
   Future<void> _bookNow() async {
+    if (widget.studentId.trim().isEmpty) {
+      setState(() => _error = 'Please sign in to book a tutoring session.');
+      return;
+    }
+
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
       _error = null;
@@ -128,14 +148,16 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                 nextSlotIndex: Value(widget.tutor.nextSlotIndex),
               ),
             );
+        if (!mounted) return;
         setState(() {
           _isLoading = false;
           _savedOffline = true;
         });
       } catch (e) {
+        if (!mounted) return;
         setState(() {
           _isLoading = false;
-          _error = 'Could not save booking: $e';
+          _error = 'Could not save booking offline. Please try again.';
         });
       }
       return;
@@ -163,6 +185,8 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
             'slotIndex': widget.tutor.nextSlotIndex,
         },
       );
+      SessionRepositoryImpl.invalidate(widget.studentId.trim());
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
         _booked = true;
@@ -175,9 +199,10 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
         if (mounted && rate != null) setState(() => _successRate = rate);
       }).catchError((_) {});
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
-        _error = e.toString();
+        _error = _friendlyBookingError(e);
       });
     }
   }

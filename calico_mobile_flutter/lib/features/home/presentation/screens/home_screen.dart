@@ -20,12 +20,14 @@ import '../../data/repositories/analytics_repository_impl.dart';
 import '../../data/repositories/course_repository_impl.dart';
 import '../../data/repositories/session_repository_impl.dart';
 import '../../data/repositories/student_tutoring_repository_impl.dart';
+import '../../domain/entities/course_entity.dart';
 import '../controllers/home_controller.dart';
 import '../widgets/course_card.dart';
 import '../widgets/session_card.dart';
 import 'course_detail_screen.dart';
 import 'courses_screen.dart';
 import 'session_detail_screen.dart';
+import 'tutors_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   /// Firebase UID of the logged-in student. Pass empty string for guest mode.
@@ -65,6 +67,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _connectivitySubscription = Connectivity().onConnectivityChanged.listen(
       _onConnectivityChanged,
     );
+    Connectivity().checkConnectivity().then((results) {
+      if (!mounted) return;
+      final offline =
+          results.isEmpty ||
+          results.every((r) => r == ConnectivityResult.none);
+      setState(() => _isOffline = offline);
+    }).catchError((_) {});
 
     if (widget.studentId.isNotEmpty) {
       Future.microtask(_trySyncIfOnline);
@@ -76,24 +85,44 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         })
         .catchError((_) {});
 
-    _controller.markLoading();
-    Future.wait([
-          _controller.loadCourses(widget.studentId),
-          _controller.loadSessions(widget.studentId),
-          _controller.loadPendingSessions(widget.studentId),
-        ], eagerError: false)
-        .then((_) {
-          if (!mounted) return;
-          _controller.markSuccess();
-        })
-        .catchError((Object e) {
-          if (!mounted) return;
-          _controller.markFailure(e.toString());
-        });
+    _controller.loadData(widget.studentId);
   }
 
   void _onUpdate() {
     if (mounted) setState(() {});
+  }
+
+  /// Up to four courses for the Home preview: upcoming session courses first,
+  /// then recommendations, then the filtered catalog.
+  List<CourseEntity> _homeCoursePreview() {
+    final courseById = {for (final c in _controller.courses) c.id: c};
+    final preview = <CourseEntity>[];
+    final seen = <String>{};
+
+    for (final session in _controller.sessions) {
+      final id = session.courseId;
+      if (id == null || id.isEmpty || seen.contains(id)) continue;
+      final course = courseById[id];
+      if (course == null) continue;
+      preview.add(course);
+      seen.add(id);
+      if (preview.length >= 4) return preview;
+    }
+
+    for (final course in _controller.recommendedCourses) {
+      if (seen.contains(course.id)) continue;
+      preview.add(course);
+      seen.add(course.id);
+      if (preview.length >= 4) return preview;
+    }
+
+    for (final course in _controller.courses) {
+      if (seen.contains(course.id)) continue;
+      preview.add(course);
+      if (preview.length >= 4) break;
+    }
+
+    return preview;
   }
 
   void _onConnectivityChanged(List<ConnectivityResult> results) {
@@ -342,6 +371,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             return;
           }
           if (i == 2) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => TutorsScreen(studentId: widget.studentId),
+              ),
+            );
+            return;
+          }
+          if (i == 3) {
             if (widget.studentId.trim().isEmpty) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
@@ -424,6 +462,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
 
     final recommended = _controller.recommendedCourses;
+    final previewCourses = _homeCoursePreview();
     final courses = _controller.courses;
     final pending = _controller.pendingSessions;
     final sessions = _controller.sessions;
@@ -509,15 +548,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         const SliverToBoxAdapter(
           child: SectionHeader('4 of your most recent courses'),
         ),
-        if (courses.isEmpty)
+        if (previewCourses.isEmpty)
           const SliverToBoxAdapter(
             child: EmptyStateView('No courses found'),
           )
         else
           SliverList.builder(
-            itemCount: courses.length > 4 ? 4 : courses.length,
+            itemCount: previewCourses.length,
             itemBuilder: (context, index) {
-              final c = courses[index];
+              final c = previewCourses[index];
               return CourseCard(
                 course: c,
                 onTap: () async {
@@ -605,7 +644,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             itemBuilder: (context, index) => SessionCard(
               session: pending[index],
               showPendingBadge: true,
-              onTap: () {},
+              onTap: () {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'This booking is queued locally. Tap Retry now when you are online.',
+                      style: AppTextStyles.itemSubtitle.copyWith(
+                        color: Colors.white,
+                      ),
+                    ),
+                    backgroundColor: Colors.blueGrey.shade700,
+                    behavior: SnackBarBehavior.floating,
+                    margin: const EdgeInsets.all(16),
+                  ),
+                );
+              },
             ),
           ),
         ],
