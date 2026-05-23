@@ -24,6 +24,7 @@ import '../controllers/home_controller.dart';
 import '../widgets/course_card.dart';
 import '../widgets/session_card.dart';
 import 'course_detail_screen.dart';
+import 'courses_screen.dart';
 import 'session_detail_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -332,6 +333,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         selectedIndex: _selectedTab,
         onTap: (i) {
           if (i == 1) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => CoursesScreen(studentId: widget.studentId),
+              ),
+            );
+            return;
+          }
+          if (i == 2) {
             if (widget.studentId.trim().isEmpty) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
@@ -354,9 +364,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 builder: (_) => ProfileScreen(userId: widget.studentId),
               ),
             );
-          } else {
-            setState(() => _selectedTab = i);
+            return;
           }
+          setState(() => _selectedTab = i);
         },
       ),
     );
@@ -495,15 +505,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           const SliverToBoxAdapter(child: SizedBox(height: 8)),
         ],
 
-        // ── Courses ──────────────────────────────────────────────────────
-        const SliverToBoxAdapter(child: SectionHeader('Courses')),
+        // ── Courses (preview, up to 4) ───────────────────────────────────
+        const SliverToBoxAdapter(
+          child: SectionHeader('4 of your most recent courses'),
+        ),
         if (courses.isEmpty)
           const SliverToBoxAdapter(
             child: EmptyStateView('No courses found'),
           )
         else
           SliverList.builder(
-            itemCount: courses.length,
+            itemCount: courses.length > 4 ? 4 : courses.length,
             itemBuilder: (context, index) {
               final c = courses[index];
               return CourseCard(
@@ -530,6 +542,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 },
               );
             },
+          ),
+        if (courses.length > 4)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          CoursesScreen(studentId: widget.studentId),
+                    ),
+                  ),
+                  icon: const Icon(Icons.arrow_forward, size: 16),
+                  label: const Text('See all courses'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppColors.primary,
+                  ),
+                ),
+              ),
+            ),
           ),
 
         // ── Pending sessions (queued offline in SQLite) ───────────────────
