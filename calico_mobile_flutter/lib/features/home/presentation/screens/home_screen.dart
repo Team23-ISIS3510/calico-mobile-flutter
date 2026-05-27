@@ -337,12 +337,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   controller: _searchController,
                   onChanged: _controller.search,
                 ),
-                _ContextAwareBanner(
-                  title: ContextAwareHelper.getTitle(),
-                  message: ContextAwareHelper.getMessage(
-                    hasSessions: _controller.sessions.isNotEmpty,
+                RepaintBoundary(
+                  child: _ContextAwareBanner(
+                    title: ContextAwareHelper.getTitle(),
+                    message: ContextAwareHelper.getMessage(
+                      hasSessions: _controller.sessions.isNotEmpty,
+                    ),
+                    icon: ContextAwareHelper.getIcon(),
                   ),
-                  icon: ContextAwareHelper.getIcon(),
                 ),
               ],
             ),
