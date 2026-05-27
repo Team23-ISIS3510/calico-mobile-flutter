@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -10,23 +11,31 @@ import '../../../../core/network/api_client.dart';
 import '../../../../core/widgets/app_bottom_nav.dart';
 import '../../../../core/widgets/app_logo.dart';
 import '../../../../core/widgets/empty_state_view.dart';
-import '../../../../core/widgets/section_header.dart';
 import '../../../profile/presentation/screens/profile_screen.dart';
-import '../../data/repositories/analytics_repository_impl.dart';
+import '../../../search/data/repositories/tutor_search_repository_impl.dart';
+import '../../data/models/available_tutor_model.dart';
 import '../../data/repositories/course_repository_impl.dart';
 import '../../domain/entities/course_entity.dart';
 import '../../domain/entities/tutor_entity.dart';
-import '../widgets/tutor_carousel_card.dart';
+import '../widgets/booking_bottom_sheet.dart';
 import 'courses_screen.dart';
 
-/// Preliminary "Tutors" view — a base scaffold that pairs the existing
-/// per-course tutor endpoint with a course-selector chip row so the student
-/// can browse the bookable tutors for any course in the catalog.
+/// Top-level function required by [compute] — must not be a closure.
+List<Map<String, dynamic>> _filterByName(Map<String, dynamic> params) {
+  final tutors = params['tutors'] as List<Map<String, dynamic>>;
+  final query = (params['query'] as String).toLowerCase();
+  if (query.isEmpty) return tutors;
+  return tutors.where((t) {
+    final name = (t['name'] as String? ?? '').toLowerCase();
+    return name.contains(query);
+  }).toList();
+}
+
+/// Tutor Search with Filters (FF015).
 ///
-/// Intentionally minimal: this is a foundation for the richer
-/// "Tutor Search with Filters" view documented in `4.1.x`. It already
-/// reuses every cache/connectivity helper the rest of the app uses, so a
-/// future expansion only has to add filters / sorting on top of what's here.
+/// Replaces the previous minimal Tutors tab with a full search experience:
+/// text search (debounced 400 ms), filter chips (Course, Rating, Location,
+/// Price), Auto-Assign shortcut, and direct booking via [BookingBottomSheet].
 class TutorsScreen extends StatefulWidget {
   final String studentId;
 
@@ -37,39 +46,96 @@ class TutorsScreen extends StatefulWidget {
 }
 
 class _TutorsScreenState extends State<TutorsScreen> {
+  late final TutorSearchRepositoryImpl _repository;
   final CourseRepositoryImpl _courseRepo = CourseRepositoryImpl(ApiClient());
-  final AnalyticsRepositoryImpl _analyticsRepo =
-      AnalyticsRepositoryImpl(ApiClient());
 
-  List<CourseEntity> _courses = const [];
-  CourseEntity? _selectedCourse;
-  List<TutorEntity> _tutors = const [];
-
-  bool _isLoadingCourses = true;
-  bool _isLoadingTutors = false;
-  bool _coursesLoadFailed = false;
-  bool _tutorsLoadFailed = false;
+  late final StreamSubscription<List<ConnectivityResult>> _connectivitySub;
   bool _isOffline = false;
 
-  StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
+  // Search state
+  final _nameController = TextEditingController();
+  Timer? _debounceTimer;
+  Map<String, dynamic>? _lastSearchParams;
+
+  // Results
+  /// Raw unfiltered results from the last successful API call.
+  List<AvailableTutorModel> _rawResults = [];
+  List<AvailableTutorModel> _allResults = [];
+  List<AvailableTutorModel> _results = [];
+  bool _isLoading = false;
+
+  // Filter values
+  List<CourseEntity> _courses = [];
+  String _selectedCourseId = '';
+  double _minRating = 0.0;
+  String _locationType = 'all';
+  double _maxPrice = double.infinity;
+
+  // ── Static cache: survives widget recreation on nav ────────────────
+  static List<AvailableTutorModel> _cachedRaw = [];
+  static List<AvailableTutorModel> _cachedResults = [];
+  static List<CourseEntity> _cachedCourses = [];
+  static String _cachedCourseId = '';
+  static double _cachedMinRating = 0.0;
+  static String _cachedLocationType = 'all';
+  static double _cachedMaxPrice = double.infinity;
+  static String _cachedNameQuery = '';
+
+  void _saveToCache() {
+    _cachedRaw = _rawResults;
+    _cachedResults = _results;
+    _cachedCourses = _courses;
+    _cachedCourseId = _selectedCourseId;
+    _cachedMinRating = _minRating;
+    _cachedLocationType = _locationType;
+    _cachedMaxPrice = _maxPrice;
+    _cachedNameQuery = _nameController.text;
+  }
+
+  bool _restoreFromCache() {
+    if (_cachedCourses.isEmpty && _cachedRaw.isEmpty) return false;
+    _rawResults = _cachedRaw;
+    _results = _cachedResults;
+    _allResults = _cachedResults;
+    _courses = _cachedCourses;
+    _selectedCourseId = _cachedCourseId;
+    _minRating = _cachedMinRating;
+    _locationType = _cachedLocationType;
+    _maxPrice = _cachedMaxPrice;
+    if (_cachedNameQuery.isNotEmpty) {
+      _nameController.text = _cachedNameQuery;
+    }
+    return true;
+  }
 
   @override
   void initState() {
     super.initState();
+    _repository = TutorSearchRepositoryImpl(ApiClient());
+
     _connectivitySub =
         Connectivity().onConnectivityChanged.listen(_onConnectivityChanged);
+
     Connectivity().checkConnectivity().then((results) {
       if (!mounted) return;
-      final offline =
-          results.isEmpty || results.every((r) => r == ConnectivityResult.none);
-      setState(() => _isOffline = offline);
-    }).catchError((_) {});
-    _loadCourses();
+      setState(() => _isOffline =
+          results.isEmpty || results.every((r) => r == ConnectivityResult.none));
+    });
+
+    // Restore previous state if available (user navigated away and back).
+    if (_restoreFromCache()) {
+      setState(() {});
+    } else {
+      _loadCourses();
+    }
   }
 
   @override
   void dispose() {
-    _connectivitySub?.cancel();
+    _saveToCache();
+    _connectivitySub.cancel();
+    _debounceTimer?.cancel();
+    _nameController.dispose();
     super.dispose();
   }
 
@@ -78,125 +144,468 @@ class _TutorsScreenState extends State<TutorsScreen> {
         results.isEmpty || results.every((r) => r == ConnectivityResult.none);
     if (!mounted) return;
     setState(() => _isOffline = offline);
-    // On reconnect, retry whichever load previously failed so the screen
-    // recovers without a user-driven retry tap.
-    if (!offline) {
-      if (_coursesLoadFailed) _loadCourses();
-      if (_tutorsLoadFailed && _selectedCourse != null) _loadTutors();
+    if (!offline && _lastSearchParams != null) {
+      _search(_lastSearchParams!);
     }
   }
 
   Future<void> _loadCourses() async {
-    setState(() {
-      _isLoadingCourses = true;
-      _coursesLoadFailed = false;
-    });
     try {
       final courses = await _courseRepo.getCourses();
       if (!mounted) return;
-      setState(() {
-        _courses = courses;
-        _isLoadingCourses = false;
-        _coursesLoadFailed = false;
-        // Default to the first course so the screen lands on real data.
-        _selectedCourse ??= courses.isEmpty ? null : courses.first;
-      });
-      if (_selectedCourse != null) {
-        _loadTutors();
+      setState(() => _courses = courses);
+      // Auto-select first course and trigger initial search.
+      if (courses.isNotEmpty && _selectedCourseId.isEmpty) {
+        _selectedCourseId = courses.first.id;
+        _search({
+          'courseId': _selectedCourseId,
+          'minRating': _minRating,
+          'locationType': _locationType,
+        });
       }
-    } catch (_) {
+    } catch (_) {}
+  }
+
+  // ── Name search with debounce + compute() ───────────────────────────
+
+  void _onNameSearchChanged(String query) {
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(const Duration(milliseconds: 400), () async {
+      // Serialize models to plain maps so compute() can cross the isolate
+      // boundary (AvailableTutorModel is not SendPort-safe).
+      final maps = _allResults
+          .map((t) => {
+                'id': t.id,
+                'name': t.name,
+                'rating': t.rating,
+                'hourlyRate': t.hourlyRate,
+                'profileImage': t.profileImage,
+                'location': t.location,
+                'nextSlotStart': t.nextSlotStart?.toIso8601String(),
+                'nextSlotEnd': t.nextSlotEnd?.toIso8601String(),
+                'parentAvailabilityId': t.parentAvailabilityId,
+                'nextSlotIndex': t.nextSlotIndex,
+                'availableSlotsCount': t.availableSlotsCount,
+                'bookingCount': t.bookingCount,
+              })
+          .toList();
+
+      final filtered =
+          await compute(_filterByName, {'tutors': maps, 'query': query});
+
+      final ids = filtered.map((m) => m['id'] as String).toSet();
       if (!mounted) return;
       setState(() {
-        _isLoadingCourses = false;
-        _coursesLoadFailed = _courses.isEmpty;
+        _results = _allResults.where((t) => ids.contains(t.id)).toList();
       });
-    }
+    });
   }
 
-  Future<void> _loadTutors() async {
-    final course = _selectedCourse;
-    if (course == null) return;
-    setState(() {
-      _isLoadingTutors = true;
-      _tutorsLoadFailed = false;
-    });
+  // ── API search through repository ────────────────────────────────────
+
+  Future<void> _search(Map<String, dynamic> params) async {
+    _lastSearchParams = params;
+    if (!mounted) return;
+
+    // Offline: skip API, filter locally from cached raw results.
+    if (_isOffline && _rawResults.isNotEmpty) {
+      _applyLocalFilters();
+      return;
+    }
+
+    setState(() => _isLoading = true);
     try {
-      final tutors = await _analyticsRepo.getAvailableTutors(course.id);
-      if (!mounted || _selectedCourse?.id != course.id) return;
-      // Highest rating first — simple deterministic order for the base view.
-      final sorted = [...tutors]
-        ..sort((a, b) => b.rating.compareTo(a.rating));
-      setState(() {
-        _tutors = sorted;
-        _isLoadingTutors = false;
-        _tutorsLoadFailed = false;
-      });
+      final tutors = await _repository.searchTutors(
+        courseId: params['courseId'] as String? ?? '',
+        minRating: (params['minRating'] as num?)?.toDouble() ?? 0.0,
+        locationType: params['locationType'] as String? ?? 'all',
+      );
+      if (!mounted) return;
+
+      _rawResults = tutors;
+      _applyLocalFilters();
     } catch (_) {
-      if (!mounted || _selectedCourse?.id != course.id) return;
-      setState(() {
-        _tutors = const [];
-        _isLoadingTutors = false;
-        _tutorsLoadFailed = true;
-      });
+      if (!mounted) return;
+      // API failed — try local filters on whatever we have.
+      if (_rawResults.isNotEmpty) {
+        _applyLocalFilters();
+      } else {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
-  Future<void> _refresh() async {
-    await _loadCourses();
+  /// Applies price, location, and rating filters client-side on [_rawResults].
+  void _applyLocalFilters() {
+    var filtered = List<AvailableTutorModel>.from(_rawResults);
+
+    // Location
+    if (_locationType == 'virtual') {
+      filtered = filtered
+          .where((t) => t.location.toLowerCase().contains('virtual'))
+          .toList();
+    } else if (_locationType != 'all') {
+      filtered = filtered
+          .where((t) => !t.location.toLowerCase().contains('virtual'))
+          .toList();
+    }
+
+    // Rating
+    if (_minRating > 0) {
+      filtered = filtered.where((t) => t.rating >= _minRating).toList();
+    }
+
+    // Price
+    if (_maxPrice != double.infinity) {
+      filtered =
+          filtered.where((t) => (t.hourlyRate ?? 0) <= _maxPrice).toList();
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _allResults = filtered;
+      _results = filtered;
+      _isLoading = false;
+    });
+
+    // Re-apply name filter if active.
+    if (_nameController.text.isNotEmpty) {
+      _onNameSearchChanged(_nameController.text);
+    }
   }
 
-  void _onCourseSelected(CourseEntity course) {
-    if (_selectedCourse?.id == course.id) return;
-    setState(() {
-      _selectedCourse = course;
-      _tutors = const [];
+  void _triggerSearch() {
+    _search({
+      'courseId': _selectedCourseId,
+      'minRating': _minRating,
+      'locationType': _locationType,
     });
-    _loadTutors();
   }
+
+  // ── Auto-assign ──────────────────────────────────────────────────────
+
+  void _autoAssign() {
+    if (_results.isEmpty) return;
+    _openBooking(_results.first);
+  }
+
+  void _openBooking(AvailableTutorModel tutor) {
+    final entity = tutor.toEntity();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => BookingBottomSheet(
+        tutor: entity,
+        studentId: widget.studentId,
+        courseId: _selectedCourseId,
+        bookingSource: 'search',
+        onBooked: _triggerSearch,
+      ),
+    );
+  }
+
+  // ── Filter dialogs ───────────────────────────────────────────────────
+
+  void _showCourseFilter() {
+    showDialog(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: Text('Select Course', style: AppTextStyles.sectionTitle),
+        children: _courses.map((c) {
+          return SimpleDialogOption(
+            onPressed: () {
+              Navigator.pop(ctx);
+              setState(() => _selectedCourseId = c.id);
+              _triggerSearch();
+            },
+            child: Text(
+              c.code.isNotEmpty ? '${c.code} — ${c.name}' : c.name,
+              style: AppTextStyles.itemTitle.copyWith(
+                color:
+                    c.id == _selectedCourseId ? AppColors.primary : AppColors.black,
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  void _showRatingFilter() {
+    showDialog(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: Text('Minimum Rating', style: AppTextStyles.sectionTitle),
+        children: [0.0, 3.0, 4.0, 4.5].map((r) {
+          return SimpleDialogOption(
+            onPressed: () {
+              Navigator.pop(ctx);
+              setState(() => _minRating = r);
+              _triggerSearch();
+            },
+            child: Text(
+              r == 0 ? 'Any rating' : '${r.toString()}+ stars',
+              style: AppTextStyles.itemTitle.copyWith(
+                color: r == _minRating ? AppColors.primary : AppColors.black,
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  void _showLocationFilter() {
+    showDialog(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: Text('Location', style: AppTextStyles.sectionTitle),
+        children: [
+          {'key': 'all', 'label': 'All locations'},
+          {'key': 'virtual', 'label': 'Virtual only'},
+          {'key': 'campus', 'label': 'In-person only'},
+        ].map((opt) {
+          return SimpleDialogOption(
+            onPressed: () {
+              Navigator.pop(ctx);
+              setState(() => _locationType = opt['key']!);
+              _triggerSearch();
+            },
+            child: Text(
+              opt['label']!,
+              style: AppTextStyles.itemTitle.copyWith(
+                color: opt['key'] == _locationType
+                    ? AppColors.primary
+                    : AppColors.black,
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  void _showPriceFilter() {
+    showDialog(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: Text('Max Price', style: AppTextStyles.sectionTitle),
+        children: [
+          {'value': double.infinity, 'label': 'Any price'},
+          {'value': 20.0, 'label': 'Up to \$20/h'},
+          {'value': 30.0, 'label': 'Up to \$30/h'},
+          {'value': 50.0, 'label': 'Up to \$50/h'},
+        ].map((opt) {
+          final val = opt['value'] as double;
+          return SimpleDialogOption(
+            onPressed: () {
+              Navigator.pop(ctx);
+              setState(() => _maxPrice = val);
+              _triggerSearch();
+            },
+            child: Text(
+              opt['label'] as String,
+              style: AppTextStyles.itemTitle.copyWith(
+                color: val == _maxPrice ? AppColors.primary : AppColors.black,
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  // ── Build ────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: Column(
-        children: [
-          SafeArea(
-            bottom: false,
-            child: Column(
-              children: [
-                const _TutorsHeader(),
-                if (_isOffline)
-                  Container(
-                    width: double.infinity,
-                    color: Colors.red.shade700,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            // Header
+            Container(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              color: AppColors.background,
+              child: const Row(
+                children: [AppLogo()],
+              ),
+            ),
+
+            // Offline banner
+            if (_isOffline)
+              Container(
+                width: double.infinity,
+                color: Colors.orange.shade700,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  children: [
+                    const Icon(Icons.wifi_off, color: Colors.white, size: 16),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'You are offline — cached results shown',
+                        style: AppTextStyles.itemSubtitle
+                            .copyWith(color: Colors.white),
+                      ),
                     ),
-                    child: Text(
-                      'Offline — showing cached data',
-                      style: AppTextStyles.itemSubtitle
-                          .copyWith(color: Colors.white),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                _CourseChipRow(
-                  courses: _courses,
-                  selected: _selectedCourse,
-                  isLoading: _isLoadingCourses,
-                  onSelected: _onCourseSelected,
+                  ],
                 ),
-              ],
+              ),
+
+            // Title row
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text('Tutors', style: AppTextStyles.sectionTitle),
+              ),
             ),
-          ),
-          Expanded(
-            child: RefreshIndicator(
-              onRefresh: _refresh,
-              color: AppColors.primary,
-              child: _buildBody(),
+
+            // Search bar
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              child: TextField(
+                controller: _nameController,
+                onChanged: _onNameSearchChanged,
+                enabled: !_isOffline,
+                decoration: InputDecoration(
+                  hintText: 'Search by name…',
+                  hintStyle: GoogleFonts.lexend(
+                    fontSize: 14,
+                    color: AppColors.brown,
+                  ),
+                  prefixIcon:
+                      const Icon(Icons.search, color: AppColors.brown),
+                  filled: true,
+                  fillColor: AppColors.inputBackground,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+                style: GoogleFonts.lexend(fontSize: 14, color: AppColors.black),
+              ),
             ),
-          ),
-        ],
+
+            // Filter chips row
+            SizedBox(
+              height: 48,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                children: [
+                  _FilterChipWidget(
+                    label: _maxPrice == double.infinity
+                        ? 'Price'
+                        : '\$${_maxPrice.toInt()}',
+                    isActive: _maxPrice != double.infinity,
+                    onTap: _showPriceFilter,
+                  ),
+                  const SizedBox(width: 8),
+                  _FilterChipWidget(
+                    label: _locationType == 'all'
+                        ? 'Location'
+                        : _locationType == 'virtual'
+                            ? 'Virtual'
+                            : 'In-person',
+                    isActive: _locationType != 'all',
+                    onTap: _showLocationFilter,
+                  ),
+                  const SizedBox(width: 8),
+                  _FilterChipWidget(
+                    label: _selectedCourseId.isEmpty
+                        ? 'Course'
+                        : _courses
+                                .where((c) => c.id == _selectedCourseId)
+                                .map((c) =>
+                                    c.code.isNotEmpty ? c.code : c.name)
+                                .firstOrNull ??
+                            'Course',
+                    isActive: _selectedCourseId.isNotEmpty,
+                    onTap: _showCourseFilter,
+                  ),
+                  const SizedBox(width: 8),
+                  _FilterChipWidget(
+                    label: _minRating == 0
+                        ? 'Rating'
+                        : '${_minRating.toString()}+',
+                    isActive: _minRating > 0,
+                    onTap: _showRatingFilter,
+                  ),
+                ],
+              ),
+            ),
+
+            // Auto-Assign
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+              child: Material(
+                color: AppColors.inputBackground,
+                borderRadius: BorderRadius.circular(12),
+                child: ListTile(
+                  leading: const Icon(Icons.auto_awesome,
+                      color: AppColors.primary),
+                  title: Text('Auto-Assign',
+                      style: GoogleFonts.lexend(
+                          fontSize: 14, fontWeight: FontWeight.w500)),
+                  subtitle: Text(
+                    'Book the best available tutor instantly',
+                    style: GoogleFonts.lexend(
+                        fontSize: 12, color: AppColors.brown),
+                  ),
+                  trailing: const Icon(Icons.arrow_forward_ios,
+                      size: 16, color: AppColors.brown),
+                  onTap: _autoAssign,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ),
+
+            // Tutor list
+            Expanded(
+              child: _isLoading
+                  ? const Center(
+                      child:
+                          CircularProgressIndicator(color: AppColors.primary))
+                  : _results.isEmpty
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Text(
+                              'No tutors found. Try clearing filters.',
+                              textAlign: TextAlign.center,
+                              style: AppTextStyles.itemSubtitle,
+                            ),
+                          ),
+                        )
+                      : RefreshIndicator(
+                          onRefresh: () async => _triggerSearch(),
+                          color: AppColors.primary,
+                          child: ListView.separated(
+                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                            itemCount: _results.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: 10),
+                            itemBuilder: (_, i) {
+                              final tutor = _results[i];
+                              return _TutorListTile(
+                                tutor: tutor,
+                                onTap: () => _openBooking(tutor),
+                              );
+                            },
+                          ),
+                        ),
+            ),
+          ],
+        ),
       ),
       bottomNavigationBar: AppBottomNav(
         selectedIndex: 2,
@@ -205,101 +614,9 @@ class _TutorsScreenState extends State<TutorsScreen> {
     );
   }
 
-  Widget _buildBody() {
-    if (_isLoadingCourses && _courses.isEmpty) {
-      return ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        children: const [
-          SizedBox(height: 120),
-          Center(child: CircularProgressIndicator(color: AppColors.primary)),
-        ],
-      );
-    }
-
-    if (_coursesLoadFailed) {
-      return _ErrorRetry(
-        message: _isOffline
-            ? 'Offline. Connect to load tutors.'
-            : 'We could not load tutors right now. Please try again.',
-        onRetry: _loadCourses,
-      );
-    }
-
-    if (_selectedCourse == null) {
-      return const _ScrollableEmpty(
-        message: 'No courses available to browse tutors for.',
-      );
-    }
-
-    return CustomScrollView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      slivers: [
-        SliverToBoxAdapter(
-          child: SectionHeader(
-            'Tutors for ${_selectedCourse!.name}',
-          ),
-        ),
-        if (_isLoadingTutors)
-          const SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.symmetric(vertical: 40),
-              child: Center(
-                child: CircularProgressIndicator(color: AppColors.primary),
-              ),
-            ),
-          )
-        else if (_tutorsLoadFailed)
-          SliverToBoxAdapter(
-            child: _InlineError(
-              message: _isOffline
-                  ? 'Offline. We couldn\'t reach the tutors service.'
-                  : 'Could not load tutors for this course.',
-              onRetry: _loadTutors,
-            ),
-          )
-        else if (_tutors.isEmpty)
-          const SliverToBoxAdapter(
-            child: EmptyStateView('No tutors available for this course yet.'),
-          )
-        else
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            sliver: SliverList.separated(
-              itemCount: _tutors.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 12),
-              itemBuilder: (context, index) {
-                final tutor = _tutors[index];
-                return _TutorRow(
-                  tutor: tutor,
-                  onTap: () => _showComingSoon(tutor),
-                );
-              },
-            ),
-          ),
-        const SliverToBoxAdapter(child: SizedBox(height: 24)),
-      ],
-    );
-  }
-
-  void _showComingSoon(TutorEntity tutor) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Booking ${tutor.name} from this view is coming soon. '
-          'Open a course detail to book a session.',
-          style: AppTextStyles.itemSubtitle.copyWith(color: Colors.white),
-        ),
-        backgroundColor: AppColors.brown,
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.all(16),
-      ),
-    );
-  }
-
   void _onBottomNavTap(BuildContext context, int index) {
-    if (index == 2) return; // Already on Tutors.
+    if (index == 2) return;
     if (index == 0) {
-      // Home is the root — pop back to it instead of stacking another Home.
       Navigator.popUntil(context, (route) => route.isFirst);
       return;
     }
@@ -318,8 +635,7 @@ class _TutorsScreenState extends State<TutorsScreen> {
           SnackBar(
             content: Text(
               'Guest mode: please sign in to view your profile.',
-              style:
-                  AppTextStyles.itemSubtitle.copyWith(color: Colors.white),
+              style: AppTextStyles.itemSubtitle.copyWith(color: Colors.white),
             ),
             backgroundColor: Colors.blueGrey,
             behavior: SnackBarBehavior.floating,
@@ -340,186 +656,135 @@ class _TutorsScreenState extends State<TutorsScreen> {
 
 // ─── Private sub-widgets ────────────────────────────────────────────────────
 
-class _TutorsHeader extends StatelessWidget {
-  const _TutorsHeader();
+class _FilterChipWidget extends StatelessWidget {
+  final String label;
+  final bool isActive;
+  final VoidCallback onTap;
 
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-      color: AppColors.background,
-      child: const Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [AppLogo()],
-      ),
-    );
-  }
-}
-
-class _CourseChipRow extends StatelessWidget {
-  final List<CourseEntity> courses;
-  final CourseEntity? selected;
-  final bool isLoading;
-  final ValueChanged<CourseEntity> onSelected;
-
-  const _CourseChipRow({
-    required this.courses,
-    required this.selected,
-    required this.isLoading,
-    required this.onSelected,
+  const _FilterChipWidget({
+    required this.label,
+    required this.isActive,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    if (isLoading && courses.isEmpty) {
-      return const SizedBox(height: 56);
-    }
-    if (courses.isEmpty) return const SizedBox.shrink();
-
-    return SizedBox(
-      height: 56,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        itemCount: courses.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 8),
-        itemBuilder: (context, index) {
-          final course = courses[index];
-          final isSelected = selected?.id == course.id;
-          return ChoiceChip(
-            label: Text(
-              course.code.isNotEmpty ? course.code : course.name,
-              style: GoogleFonts.lexend(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                color: isSelected ? Colors.white : AppColors.black,
-              ),
-            ),
-            selected: isSelected,
-            selectedColor: AppColors.primary,
-            backgroundColor: AppColors.inputBackground,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-              side: BorderSide.none,
-            ),
-            onSelected: (_) => onSelected(course),
-            showCheckmark: false,
-          );
-        },
+    return GestureDetector(
+      onTap: onTap,
+      child: Chip(
+        label: Text(
+          label,
+          style: GoogleFonts.lexend(
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+            color: isActive ? Colors.white : AppColors.black,
+          ),
+        ),
+        backgroundColor: isActive ? AppColors.primary : AppColors.inputBackground,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        side: BorderSide.none,
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
     );
   }
 }
 
-class _TutorRow extends StatelessWidget {
-  final TutorEntity tutor;
+class _TutorListTile extends StatelessWidget {
+  final AvailableTutorModel tutor;
   final VoidCallback onTap;
 
-  const _TutorRow({required this.tutor, required this.onTap});
+  const _TutorListTile({required this.tutor, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    // Stretch the existing carousel card to fill the row width — keeps the
-    // visual language consistent with the rest of the app without a new card.
     return Material(
-      color: Colors.transparent,
+      color: AppColors.inputBackground,
+      borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
-        child: SizedBox(
-          width: double.infinity,
-          child: TutorCarouselCard(tutor: tutor, onTap: onTap),
-        ),
-      ),
-    );
-  }
-}
-
-class _ErrorRetry extends StatelessWidget {
-  final String message;
-  final VoidCallback onRetry;
-
-  const _ErrorRetry({required this.message, required this.onRetry});
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
             children: [
-              const Icon(Icons.wifi_off, size: 48, color: AppColors.brown),
-              const SizedBox(height: 12),
-              Text(
-                message,
-                textAlign: TextAlign.center,
-                style: AppTextStyles.itemSubtitle,
+              // Avatar
+              CircleAvatar(
+                radius: 24,
+                backgroundColor: AppColors.primary,
+                backgroundImage: tutor.profileImage != null &&
+                        tutor.profileImage!.isNotEmpty
+                    ? NetworkImage(tutor.profileImage!)
+                    : null,
+                child: tutor.profileImage == null || tutor.profileImage!.isEmpty
+                    ? const Icon(Icons.person, color: Colors.white)
+                    : null,
               ),
-              const SizedBox(height: 16),
-              TextButton(
-                onPressed: onRetry,
-                child: Text(
-                  'Retry',
-                  style: AppTextStyles.buttonLabel
-                      .copyWith(color: AppColors.primary),
+              const SizedBox(width: 12),
+
+              // Name + location
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      tutor.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.lexend(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.black,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      tutor.location,
+                      style: GoogleFonts.lexend(
+                        fontSize: 12,
+                        color: AppColors.brown,
+                      ),
+                    ),
+                    if (tutor.hourlyRate != null)
+                      Text(
+                        '\$${tutor.hourlyRate!.toStringAsFixed(0)}/h',
+                        style: GoogleFonts.lexend(
+                          fontSize: 12,
+                          color: AppColors.brown,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+
+              // Rating badge
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.star_rounded,
+                        size: 14, color: AppColors.primary),
+                    const SizedBox(width: 2),
+                    Text(
+                      tutor.rating.toStringAsFixed(1),
+                      style: GoogleFonts.lexend(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
         ),
-      ],
-    );
-  }
-}
-
-class _InlineError extends StatelessWidget {
-  final String message;
-  final VoidCallback onRetry;
-
-  const _InlineError({required this.message, required this.onRetry});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        children: [
-          Text(
-            message,
-            textAlign: TextAlign.center,
-            style: AppTextStyles.itemSubtitle,
-          ),
-          const SizedBox(height: 12),
-          TextButton(
-            onPressed: onRetry,
-            child: Text(
-              'Retry',
-              style: AppTextStyles.buttonLabel
-                  .copyWith(color: AppColors.primary),
-            ),
-          ),
-        ],
       ),
-    );
-  }
-}
-
-class _ScrollableEmpty extends StatelessWidget {
-  final String message;
-
-  const _ScrollableEmpty({required this.message});
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      children: [
-        const SizedBox(height: 80),
-        EmptyStateView(message),
-      ],
     );
   }
 }

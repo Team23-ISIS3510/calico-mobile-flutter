@@ -17,12 +17,15 @@ class SessionCard extends StatelessWidget {
   /// was saved to the local SQLite queue while offline and has not yet been
   /// confirmed by the server.
   final bool showPendingBadge;
+  /// Called when the user taps the cancel button on a pending session.
+  final VoidCallback? onCancel;
 
   const SessionCard({
     super.key,
     required this.session,
     required this.onTap,
     this.showPendingBadge = false,
+    this.onCancel,
   });
 
   @override
@@ -95,7 +98,16 @@ class SessionCard extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            const Icon(Icons.chevron_right, size: 28, color: AppColors.black),
+            if (showPendingBadge && onCancel != null)
+              IconButton(
+                onPressed: onCancel,
+                icon: const Icon(Icons.close, size: 22, color: Colors.red),
+                tooltip: 'Cancel booking',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+              )
+            else
+              const Icon(Icons.chevron_right, size: 28, color: AppColors.black),
           ],
         ),
       ),

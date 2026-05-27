@@ -5,6 +5,8 @@ import 'package:calico_mobile_flutter/features/profile/presentation/screens/prof
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 
+import '../../../../core/local/pending_sessions_database.dart';
+import '../../domain/entities/session_entity.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_text_styles.dart';
 import '../../../../core/network/api_client.dart';
@@ -94,7 +96,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   /// Up to four courses for the Home preview: upcoming session courses first,
   /// then recommendations, then the filtered catalog.
+  /// Every source is intersected with the filtered catalog so the search bar
+  /// actually narrows the visible set.
   List<CourseEntity> _homeCoursePreview() {
+    final filteredIds = {for (final c in _controller.courses) c.id};
     final courseById = {for (final c in _controller.courses) c.id: c};
     final preview = <CourseEntity>[];
     final seen = <String>{};
@@ -102,6 +107,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     for (final session in _controller.sessions) {
       final id = session.courseId;
       if (id == null || id.isEmpty || seen.contains(id)) continue;
+      if (!filteredIds.contains(id)) continue;
       final course = courseById[id];
       if (course == null) continue;
       preview.add(course);
@@ -111,6 +117,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     for (final course in _controller.recommendedCourses) {
       if (seen.contains(course.id)) continue;
+      if (!filteredIds.contains(course.id)) continue;
       preview.add(course);
       seen.add(course.id);
       if (preview.length >= 4) return preview;
@@ -134,6 +141,39 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _trySyncIfOnline();
       ProfileRepositoryImpl(ApiClient()).syncPendingUpdate(widget.studentId);
     }
+  }
+
+  Future<void> _cancelPending(SessionEntity session) async {
+    // Extract the SQLite row id from 'pending_<id>'.
+    final localId = int.tryParse(session.id.replaceFirst('pending_', ''));
+    if (localId == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Cancel booking?', style: AppTextStyles.sectionTitle),
+        content: Text(
+          'This will remove the pending session with ${session.displayTutor}.',
+          style: AppTextStyles.itemSubtitle,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Keep'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Cancel booking'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+    await PendingSessionsDatabase.instance.deleteById(localId);
+    await _controller.loadPendingSessions(widget.studentId);
+    if (mounted) setState(() {});
   }
 
   Future<void> _retrySyncNow() async {
@@ -333,10 +373,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       textAlign: TextAlign.center,
                     ),
                   ),
-                _SearchBar(
-                  controller: _searchController,
-                  onChanged: _controller.search,
-                ),
                 RepaintBoundary(
                   child: _ContextAwareBanner(
                     title: ContextAwareHelper.getTitle(),
@@ -362,23 +398,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
       bottomNavigationBar: AppBottomNav(
         selectedIndex: _selectedTab,
-        onTap: (i) {
+        onTap: (i) async {
           if (i == 1) {
-            Navigator.push(
+            await Navigator.push(
               context,
               MaterialPageRoute(
                 builder: (_) => CoursesScreen(studentId: widget.studentId),
               ),
             );
+            if (!mounted) return;
+            await _controller.loadPendingSessions(widget.studentId);
+            setState(() {});
             return;
           }
           if (i == 2) {
-            Navigator.push(
+            await Navigator.push(
               context,
               MaterialPageRoute(
                 builder: (_) => TutorsScreen(studentId: widget.studentId),
               ),
             );
+            if (!mounted) return;
+            await _controller.loadPendingSessions(widget.studentId);
+            setState(() {});
             return;
           }
           if (i == 3) {
@@ -398,12 +440,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               );
               return;
             }
-            Navigator.push(
+            await Navigator.push(
               context,
               MaterialPageRoute(
                 builder: (_) => ProfileScreen(userId: widget.studentId),
               ),
             );
+            if (!mounted) return;
+            await _controller.loadPendingSessions(widget.studentId);
+            setState(() {});
             return;
           }
           setState(() => _selectedTab = i);
@@ -425,7 +470,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       );
     }
 
-    if (_controller.status == HomeStatus.failure) {
+    if (_controller.status == HomeStatus.failure &&
+        _controller.pendingSessions.isEmpty) {
       final failureMessage = _isOffline
           ? 'Sin conexión. No pudimos actualizar Inicio, pero puedes reintentar cuando vuelvas a estar en línea.'
           : (_controller.error?.trim().isNotEmpty ?? false)
@@ -508,7 +554,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       );
                       if (!mounted) return;
                       await _controller.loadPendingSessions(widget.studentId);
-                      if (booked == true) {
+                      if (booked == true && !_isOffline) {
                         _controller.loadData(widget.studentId);
                       }
                       if (mounted) setState(() {});
@@ -578,7 +624,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   );
                   if (!mounted) return;
                   await _controller.loadPendingSessions(widget.studentId);
-                  if (booked == true) _controller.loadData(widget.studentId);
+                  if (booked == true && !_isOffline) {
+                    _controller.loadData(widget.studentId);
+                  }
                   if (mounted) setState(() {});
                 },
               );
@@ -643,25 +691,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ),
           SliverList.builder(
             itemCount: pending.length,
-            itemBuilder: (context, index) => SessionCard(
-              session: pending[index],
-              showPendingBadge: true,
-              onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      'This booking is queued locally. Tap Retry now when you are online.',
-                      style: AppTextStyles.itemSubtitle.copyWith(
-                        color: Colors.white,
+            itemBuilder: (context, index) {
+              final session = pending[index];
+              return SessionCard(
+                session: session,
+                showPendingBadge: true,
+                onCancel: () => _cancelPending(session),
+                onTap: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        'This booking is queued locally. Tap Retry now when you are online.',
+                        style: AppTextStyles.itemSubtitle.copyWith(
+                          color: Colors.white,
+                        ),
                       ),
+                      backgroundColor: Colors.blueGrey.shade700,
+                      behavior: SnackBarBehavior.floating,
+                      margin: const EdgeInsets.all(16),
                     ),
-                    backgroundColor: Colors.blueGrey.shade700,
-                    behavior: SnackBarBehavior.floating,
-                    margin: const EdgeInsets.all(16),
-                  ),
-                );
-              },
-            ),
+                  );
+                },
+              );
+            },
           ),
         ],
 
