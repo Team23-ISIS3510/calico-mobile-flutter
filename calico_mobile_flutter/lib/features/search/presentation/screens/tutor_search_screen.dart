@@ -156,7 +156,7 @@ class _TutorSearchScreenState extends State<TutorSearchScreen> {
   Future<void> _showLocationSheet() async {
     final chosen = await showModalBottomSheet<String>(
       context: context,
-      builder: (_) => _FilterSheetString(
+      builder: (_) => _FilterSheet<String>(
         title: 'Location',
         options: const ['Any', 'Virtual', 'On Campus'],
         values: const ['all', 'virtual', 'campus'],
@@ -517,18 +517,24 @@ class _TutorRow extends StatelessWidget {
         ),
         child: Row(
           children: [
-            // Circular avatar with first letter of name
+            // Circular avatar — show profile photo if available, else initial
             CircleAvatar(
               radius: 22,
               backgroundColor: AppColors.primary,
-              child: Text(
-                initial,
-                style: GoogleFonts.lexend(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 16,
-                ),
-              ),
+              backgroundImage: tutor.profileImage != null &&
+                      tutor.profileImage!.isNotEmpty
+                  ? NetworkImage(tutor.profileImage!)
+                  : null,
+              child: tutor.profileImage == null || tutor.profileImage!.isEmpty
+                  ? Text(
+                      initial,
+                      style: GoogleFonts.lexend(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 16,
+                      ),
+                    )
+                  : null,
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -609,12 +615,3 @@ class _FilterSheet<T> extends StatelessWidget {
   }
 }
 
-// ignore: avoid_implementing_value_types
-class _FilterSheetString extends _FilterSheet<String> {
-  const _FilterSheetString({
-    required super.title,
-    required super.options,
-    required super.values,
-    required super.currentValue,
-  });
-}

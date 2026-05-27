@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:calico_mobile_flutter/features/profile/data/repositories/profile_repository_impl.dart';
 import 'package:calico_mobile_flutter/features/profile/presentation/screens/profile_screen.dart';
+import 'package:calico_mobile_flutter/features/search/presentation/screens/tutor_search_screen.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 
@@ -364,6 +365,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         selectedIndex: _selectedTab,
         onTap: (i) {
           if (i == 1) {
+            // Tab 1 — Tutor Search (Sprint 4 – FF015)
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => TutorSearchScreen(studentId: widget.studentId),
+              ),
+            );
+            return;
+          }
+          if (i == 2) {
+            // Tab 2 — Courses
             Navigator.push(
               context,
               MaterialPageRoute(
@@ -372,7 +384,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             );
             return;
           }
-          if (i == 2) {
+          if (i == 3) {
+            // Tab 3 — Tutors
             Navigator.push(
               context,
               MaterialPageRoute(
@@ -381,7 +394,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             );
             return;
           }
-          if (i == 3) {
+          if (i == 4) {
+            // Tab 4 — Profile
             if (widget.studentId.trim().isEmpty) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
@@ -595,11 +609,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     context,
                     MaterialPageRoute(
                       builder: (_) =>
-                          CoursesScreen(studentId: widget.studentId),
+                          TutorSearchScreen(studentId: widget.studentId),
                     ),
                   ),
                   icon: const Icon(Icons.arrow_forward, size: 16),
-                  label: const Text('See all courses'),
+                  label: const Text('Find a tutor'),
                   style: TextButton.styleFrom(
                     foregroundColor: AppColors.primary,
                   ),
