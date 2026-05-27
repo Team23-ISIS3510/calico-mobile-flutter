@@ -94,7 +94,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   /// Up to four courses for the Home preview: upcoming session courses first,
   /// then recommendations, then the filtered catalog.
+  /// Every source is intersected with the filtered catalog so the search bar
+  /// actually narrows the visible set.
   List<CourseEntity> _homeCoursePreview() {
+    final filteredIds = {for (final c in _controller.courses) c.id};
     final courseById = {for (final c in _controller.courses) c.id: c};
     final preview = <CourseEntity>[];
     final seen = <String>{};
@@ -102,6 +105,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     for (final session in _controller.sessions) {
       final id = session.courseId;
       if (id == null || id.isEmpty || seen.contains(id)) continue;
+      if (!filteredIds.contains(id)) continue;
       final course = courseById[id];
       if (course == null) continue;
       preview.add(course);
@@ -111,6 +115,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     for (final course in _controller.recommendedCourses) {
       if (seen.contains(course.id)) continue;
+      if (!filteredIds.contains(course.id)) continue;
       preview.add(course);
       seen.add(course.id);
       if (preview.length >= 4) return preview;
@@ -333,10 +338,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       textAlign: TextAlign.center,
                     ),
                   ),
-                _SearchBar(
-                  controller: _searchController,
-                  onChanged: _controller.search,
-                ),
                 RepaintBoundary(
                   child: _ContextAwareBanner(
                     title: ContextAwareHelper.getTitle(),
