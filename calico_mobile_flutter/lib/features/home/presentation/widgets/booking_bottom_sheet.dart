@@ -115,51 +115,11 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
     });
 
     // ── Offline check: queue in SQLite instead of hitting the API ────────
-    // WHY SQLITE HERE?
-    // A missed booking while offline is a high-friction failure — the user
-    // tapped Book Now with intent.  We persist the full booking payload to
-    // the pending_sessions table so SyncService can POST it the moment the
-    // device comes back online, without requiring the user to repeat the
-    // action.  SQLite is the right store because:
-    //   - Each row has an independent lifecycle (pending → synced)
-    //   - Typed columns prevent data corruption between save and sync
-    //   - Supports filtered queries (WHERE synced = false) at sync time
     final connectivity = await Connectivity().checkConnectivity();
     final isOnline = connectivity.any((r) => r != ConnectivityResult.none);
 
     if (!isOnline) {
-      try {
-        final window = _bookingWindow();
-        final db = PendingSessionsDatabase.instance;
-        await db
-            .into(db.pendingSessions)
-            .insert(
-              PendingSessionsCompanion.insert(
-                tutorId: widget.tutor.id,
-                studentId: widget.studentId,
-                courseId: widget.courseId,
-                scheduledStart: window.start.toIso8601String(),
-                scheduledEnd: window.end.toIso8601String(),
-                location: widget.tutor.location,
-                bookingSource: widget.bookingSource,
-                createdAt: DateTime.now(),
-                tutorName: Value(widget.tutor.name),
-                parentAvailabilityId: Value(widget.tutor.parentAvailabilityId),
-                nextSlotIndex: Value(widget.tutor.nextSlotIndex),
-              ),
-            );
-        if (!mounted) return;
-        setState(() {
-          _isLoading = false;
-          _savedOffline = true;
-        });
-      } catch (e) {
-        if (!mounted) return;
-        setState(() {
-          _isLoading = false;
-          _error = 'Could not save booking offline. Please try again.';
-        });
-      }
+      await _queueOffline();
       return;
     }
 
@@ -199,12 +159,71 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
         if (mounted && rate != null) setState(() => _successRate = rate);
       }).catchError((_) {});
     } catch (e) {
+      // ── Fallback: if POST failed due to network, save offline ──────────
+      // The connectivity check may have returned "online" but the actual
+      // request failed (unstable wifi, server unreachable, timeout).
+      // Instead of losing the booking intent, persist to SQLite so
+      // SyncService retries when connectivity is truly restored.
+      if (_isNetworkRelatedError(e)) {
+        await _queueOffline();
+        return;
+      }
+
       if (!mounted) return;
       setState(() {
         _isLoading = false;
         _error = _friendlyBookingError(e);
       });
     }
+  }
+
+  /// Persists the booking to the local SQLite pending_sessions table.
+  /// On success sets [_savedOffline] = true so the UI shows the queued state.
+  Future<void> _queueOffline() async {
+    try {
+      final window = _bookingWindow();
+      final db = PendingSessionsDatabase.instance;
+      await db
+          .into(db.pendingSessions)
+          .insert(
+            PendingSessionsCompanion.insert(
+              tutorId: widget.tutor.id,
+              studentId: widget.studentId,
+              courseId: widget.courseId,
+              scheduledStart: window.start.toIso8601String(),
+              scheduledEnd: window.end.toIso8601String(),
+              location: widget.tutor.location,
+              bookingSource: widget.bookingSource,
+              createdAt: DateTime.now(),
+              tutorName: Value(widget.tutor.name),
+              parentAvailabilityId: Value(widget.tutor.parentAvailabilityId),
+              nextSlotIndex: Value(widget.tutor.nextSlotIndex),
+            ),
+          );
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _savedOffline = true;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _error = 'Could not save booking offline. Please try again.';
+      });
+    }
+  }
+
+  /// Returns true when the error looks like a connectivity / network issue
+  /// rather than a server-side validation error (4xx).
+  bool _isNetworkRelatedError(Object error) {
+    final msg = error.toString().toLowerCase();
+    return msg.contains('socket') ||
+        msg.contains('network') ||
+        msg.contains('connection') ||
+        msg.contains('timed out') ||
+        msg.contains('timeout') ||
+        msg.contains('no internet');
   }
 
   @override
