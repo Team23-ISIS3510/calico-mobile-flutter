@@ -16,6 +16,9 @@ import 'package:calico_mobile_flutter/features/profile/data/repositories/profile
 import 'package:calico_mobile_flutter/features/profile/domain/models/user_profile.dart';
 import 'package:calico_mobile_flutter/features/profile/presentation/controllers/profile_controller.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:calico_mobile_flutter/core/widgets/app_bottom_nav.dart';
+import 'package:calico_mobile_flutter/features/home/presentation/screens/courses_screen.dart';
+import 'package:calico_mobile_flutter/features/home/presentation/screens/tutors_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String userId;
@@ -155,7 +158,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
       ),
-      bottomNavigationBar: _BottomNav(),
+      bottomNavigationBar: AppBottomNav(
+        selectedIndex: 3,
+        onTap: (i) {
+          if (i == 0) {
+            Navigator.pop(context);
+          }
+          if (i == 1) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (_) => CoursesScreen(studentId: widget.userId),
+              ),
+            );
+          }
+          if (i == 2) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (_) => TutorsScreen(studentId: widget.userId),
+              ),
+            );
+          }
+          // i == 3 → ya estamos en Profile, no hacer nada
+        },
+      ),
     );
   }
 
@@ -775,26 +802,3 @@ class _InfoBanner extends StatelessWidget {
   }
 }
 
-class _BottomNav extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return BottomNavigationBar(
-      currentIndex: 1,
-      selectedItemColor: AppColors.primary,
-      unselectedItemColor: Colors.black54,
-      showUnselectedLabels: true,
-      type: BottomNavigationBarType.fixed,
-      backgroundColor: AppColors.background,
-      elevation: 0,
-      selectedLabelStyle: AppTextStyles.itemSubtitle,
-      unselectedLabelStyle: AppTextStyles.itemSubtitle,
-      onTap: (i) {
-        if (i == 0) Navigator.pop(context);
-      },
-      items: const [
-        BottomNavigationBarItem(icon: Icon(Icons.home_outlined), label: 'Home'),
-        BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
-      ],
-    );
-  }
-}

@@ -37,31 +37,21 @@ class AppBottomNav extends StatelessWidget {
       unselectedLabelStyle:
           GoogleFonts.lexend(fontSize: 12, fontWeight: FontWeight.w400),
       items: const [
-        // 0 – Home
         BottomNavigationBarItem(
           icon: Icon(Icons.home_outlined),
           activeIcon: Icon(Icons.home),
           label: 'Home',
         ),
-        // 1 – Tutor Search (Sprint 4 – FF015)
-        BottomNavigationBarItem(
-          icon: Icon(Icons.search),
-          activeIcon: Icon(Icons.search),
-          label: 'Search',
-        ),
-        // 2 – Courses
         BottomNavigationBarItem(
           icon: Icon(Icons.menu_book_outlined),
           activeIcon: Icon(Icons.menu_book),
           label: 'Courses',
         ),
-        // 3 – Tutors
         BottomNavigationBarItem(
           icon: Icon(Icons.school_outlined),
           activeIcon: Icon(Icons.school),
           label: 'Tutors',
         ),
-        // 4 – Profile
         BottomNavigationBarItem(
           icon: Icon(Icons.person_outline),
           activeIcon: Icon(Icons.person),
