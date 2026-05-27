@@ -50,9 +50,21 @@ class TutorSearchRepositoryImpl implements TutorSearchRepository {
     );
 
     final raw = data['tutors'] as List<dynamic>? ?? [];
-    final tutors = raw
+    var tutors = raw
         .map((e) => AvailableTutorModel.fromJson(e as Map<String, dynamic>))
         .toList();
+
+    // Client-side location filter — the API may not support it natively.
+    // 'all' = no filter, 'virtual' = only virtual, anything else = non-virtual.
+    if (locationType == 'virtual') {
+      tutors = tutors
+          .where((t) => t.location.toLowerCase().contains('virtual'))
+          .toList();
+    } else if (locationType != 'all') {
+      tutors = tutors
+          .where((t) => !t.location.toLowerCase().contains('virtual'))
+          .toList();
+    }
 
     _cache.put(key, tutors);
     return tutors;
