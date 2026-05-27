@@ -104,6 +104,14 @@ class StudentTutoringRepositoryImpl implements StudentTutoringRepository {
           return aStart.compareTo(bStart);
         });
 
+      // Dedup: mismo tutor + curso + slot = solo queda una.
+      final seen = <String>{};
+      upcoming.removeWhere((s) {
+        final key =
+            '${s.tutorId}_${s.courseId}_${s.startDateTime?.toIso8601String()}';
+        return !seen.add(key);
+      });
+
       await _safeUpsert(
         AppDatabaseService.tableUpcomingSessions,
         {
