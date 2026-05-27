@@ -58,6 +58,8 @@ class _TutorsScreenState extends State<TutorsScreen> {
   Map<String, dynamic>? _lastSearchParams;
 
   // Results
+  /// Raw unfiltered results from the last successful API call.
+  List<AvailableTutorModel> _rawResults = [];
   List<AvailableTutorModel> _allResults = [];
   List<AvailableTutorModel> _results = [];
   bool _isLoading = false;
@@ -68,6 +70,43 @@ class _TutorsScreenState extends State<TutorsScreen> {
   double _minRating = 0.0;
   String _locationType = 'all';
   double _maxPrice = double.infinity;
+
+  // ── Static cache: survives widget recreation on nav ────────────────
+  static List<AvailableTutorModel> _cachedRaw = [];
+  static List<AvailableTutorModel> _cachedResults = [];
+  static List<CourseEntity> _cachedCourses = [];
+  static String _cachedCourseId = '';
+  static double _cachedMinRating = 0.0;
+  static String _cachedLocationType = 'all';
+  static double _cachedMaxPrice = double.infinity;
+  static String _cachedNameQuery = '';
+
+  void _saveToCache() {
+    _cachedRaw = _rawResults;
+    _cachedResults = _results;
+    _cachedCourses = _courses;
+    _cachedCourseId = _selectedCourseId;
+    _cachedMinRating = _minRating;
+    _cachedLocationType = _locationType;
+    _cachedMaxPrice = _maxPrice;
+    _cachedNameQuery = _nameController.text;
+  }
+
+  bool _restoreFromCache() {
+    if (_cachedCourses.isEmpty && _cachedRaw.isEmpty) return false;
+    _rawResults = _cachedRaw;
+    _results = _cachedResults;
+    _allResults = _cachedResults;
+    _courses = _cachedCourses;
+    _selectedCourseId = _cachedCourseId;
+    _minRating = _cachedMinRating;
+    _locationType = _cachedLocationType;
+    _maxPrice = _cachedMaxPrice;
+    if (_cachedNameQuery.isNotEmpty) {
+      _nameController.text = _cachedNameQuery;
+    }
+    return true;
+  }
 
   @override
   void initState() {
@@ -83,11 +122,17 @@ class _TutorsScreenState extends State<TutorsScreen> {
           results.isEmpty || results.every((r) => r == ConnectivityResult.none));
     });
 
-    _loadCourses();
+    // Restore previous state if available (user navigated away and back).
+    if (_restoreFromCache()) {
+      setState(() {});
+    } else {
+      _loadCourses();
+    }
   }
 
   @override
   void dispose() {
+    _saveToCache();
     _connectivitySub.cancel();
     _debounceTimer?.cancel();
     _nameController.dispose();
@@ -161,6 +206,13 @@ class _TutorsScreenState extends State<TutorsScreen> {
   Future<void> _search(Map<String, dynamic> params) async {
     _lastSearchParams = params;
     if (!mounted) return;
+
+    // Offline: skip API, filter locally from cached raw results.
+    if (_isOffline && _rawResults.isNotEmpty) {
+      _applyLocalFilters();
+      return;
+    }
+
     setState(() => _isLoading = true);
     try {
       final tutors = await _repository.searchTutors(
@@ -170,27 +222,55 @@ class _TutorsScreenState extends State<TutorsScreen> {
       );
       if (!mounted) return;
 
-      // Apply local price filter
-      final priceFiltered = _maxPrice == double.infinity
-          ? tutors
-          : tutors
-              .where(
-                  (t) => (t.hourlyRate ?? 0) <= _maxPrice)
-              .toList();
-
-      setState(() {
-        _allResults = priceFiltered;
-        _results = priceFiltered;
-        _isLoading = false;
-      });
-
-      // Re-apply name filter if active
-      if (_nameController.text.isNotEmpty) {
-        _onNameSearchChanged(_nameController.text);
-      }
+      _rawResults = tutors;
+      _applyLocalFilters();
     } catch (_) {
       if (!mounted) return;
-      setState(() => _isLoading = false);
+      // API failed — try local filters on whatever we have.
+      if (_rawResults.isNotEmpty) {
+        _applyLocalFilters();
+      } else {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  /// Applies price, location, and rating filters client-side on [_rawResults].
+  void _applyLocalFilters() {
+    var filtered = List<AvailableTutorModel>.from(_rawResults);
+
+    // Location
+    if (_locationType == 'virtual') {
+      filtered = filtered
+          .where((t) => t.location.toLowerCase().contains('virtual'))
+          .toList();
+    } else if (_locationType != 'all') {
+      filtered = filtered
+          .where((t) => !t.location.toLowerCase().contains('virtual'))
+          .toList();
+    }
+
+    // Rating
+    if (_minRating > 0) {
+      filtered = filtered.where((t) => t.rating >= _minRating).toList();
+    }
+
+    // Price
+    if (_maxPrice != double.infinity) {
+      filtered =
+          filtered.where((t) => (t.hourlyRate ?? 0) <= _maxPrice).toList();
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _allResults = filtered;
+      _results = filtered;
+      _isLoading = false;
+    });
+
+    // Re-apply name filter if active.
+    if (_nameController.text.isNotEmpty) {
+      _onNameSearchChanged(_nameController.text);
     }
   }
 

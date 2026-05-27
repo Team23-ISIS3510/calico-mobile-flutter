@@ -80,4 +80,10 @@ class PendingSessionsDatabase extends _$PendingSessionsDatabase {
       const PendingSessionsCompanion(synced: Value(true)),
     );
   }
+
+  /// Deletes a pending session by its local [id].
+  /// Used to cancel an offline-queued booking before it syncs.
+  Future<int> deleteById(int id) {
+    return (delete(pendingSessions)..where((t) => t.id.equals(id))).go();
+  }
 }

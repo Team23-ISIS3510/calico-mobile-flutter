@@ -181,7 +181,15 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
   /// On success sets [_savedOffline] = true so the UI shows the queued state.
   Future<void> _queueOffline() async {
     try {
-      final window = _bookingWindow();
+      // If the tutor has no slot info, default to "now + 1 hour" so the
+      // booking can still be queued and reconciled when online.
+      late final ({DateTime start, DateTime end}) window;
+      if (widget.tutor.nextSlotStart != null) {
+        window = _bookingWindow();
+      } else {
+        final now = DateTime.now();
+        window = (start: now, end: now.add(_defaultSessionDuration));
+      }
       final db = PendingSessionsDatabase.instance;
       await db
           .into(db.pendingSessions)
