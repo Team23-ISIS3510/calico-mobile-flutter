@@ -476,7 +476,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         // ── Recommended for you ──────────────────────────────────────────
         if (widget.studentId.isNotEmpty && recommended.isNotEmpty) ...[
           const SliverToBoxAdapter(
-            child: SectionHeader('Recommended for you'),
+            child: const SectionHeader('Recommended for you'),
           ),
           SliverToBoxAdapter(
             child: SizedBox(
@@ -546,11 +546,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
         // ── Courses (preview, up to 4) ───────────────────────────────────
         const SliverToBoxAdapter(
-          child: SectionHeader('4 of your most recent courses'),
+          child: const SectionHeader('4 of your most recent courses'),
         ),
         if (previewCourses.isEmpty)
           const SliverToBoxAdapter(
-            child: EmptyStateView('No courses found'),
+            child: const EmptyStateView('No courses found'),
           )
         else
           SliverList.builder(
