@@ -91,8 +91,9 @@ class StudentTutoringRepositoryImpl implements StudentTutoringRepository {
       final now = DateTime.now();
       final upcoming = list
           .where((session) {
-            final start = session.startDateTime;
-            return start != null && start.isAfter(now);
+            final end = session.endDateTime ??
+                session.startDateTime?.add(const Duration(hours: 1));
+            return end != null && end.isAfter(now);
           })
           .toList()
         ..sort((a, b) {
