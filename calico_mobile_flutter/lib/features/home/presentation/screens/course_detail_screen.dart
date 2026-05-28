@@ -6,18 +6,17 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_text_styles.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/local/pending_sessions_database.dart';
 import '../../data/repositories/analytics_repository_impl.dart';
 import '../../data/repositories/session_repository_impl.dart';
 import '../../data/repositories/student_tutoring_repository_impl.dart';
 import '../../domain/entities/course_entity.dart';
 import '../../domain/entities/session_entity.dart';
 import '../../domain/entities/tutor_entity.dart';
-import '../../data/repositories/analytics_repository_impl.dart';
 import '../../domain/repositories/student_tutoring_repository.dart';
-import '../../data/repositories/student_tutoring_repository_impl.dart';
-import '../../data/repositories/session_repository_impl.dart';
-import '../widgets/tutor_carousel_card.dart';
+import '../../domain/services/booking_availability_service.dart';
 import '../widgets/booking_bottom_sheet.dart';
+import '../widgets/tutor_carousel_card.dart';
 
 class CourseDetailScreen extends StatefulWidget {
   final CourseEntity course;
@@ -49,6 +48,8 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
   bool _tutorsLoadFailed = false;
   /// True when the tutor list came from Hive fallback (see [StudentTutoringRepositoryImpl]).
   bool _tutorsFromCache = false;
+  List<SessionEntity> _studentSessions = const [];
+  bool _bookingOccurred = false;
 
   @override
   void initState() {
@@ -60,9 +61,72 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
       SessionRepositoryImpl(client),
       client,
     );
+    _studentSessions = List.from(widget.existingSessions);
     _initConnectivity();
     _loadTutors();
-    if (widget.studentId.isNotEmpty) _loadGoToTutor();
+    if (widget.studentId.isNotEmpty) {
+      _loadStudentSessions();
+      _loadGoToTutor();
+    }
+  }
+
+  Future<void> _loadStudentSessions() async {
+    if (widget.studentId.trim().isEmpty) return;
+
+    var upcoming = <SessionEntity>[];
+    try {
+      final result = await _tutoringRepo.getUpcomingSessions(widget.studentId);
+      upcoming = result.data;
+    } catch (_) {}
+
+    var pending = <SessionEntity>[];
+    try {
+      final rows =
+          await PendingSessionsDatabase.instance.getUnsynced(widget.studentId);
+      pending = rows
+          .map(
+            (r) => SessionEntity(
+              id: 'pending_${r.id}',
+              tutorId: r.tutorId,
+              studentId: r.studentId,
+              startDateTime: DateTime.tryParse(r.scheduledStart),
+              endDateTime: DateTime.tryParse(r.scheduledEnd),
+              courseId: r.courseId,
+              tutorName: r.tutorName,
+              status: 'pending_local',
+            ),
+          )
+          .toList();
+    } catch (_) {}
+
+    if (!mounted) return;
+    setState(() {
+      _studentSessions = BookingAvailabilityService.mergeStudentSessions(
+        upcoming: upcoming,
+        pending: pending,
+      );
+      if (_tutors != null) {
+        _tutors = BookingAvailabilityService.filterBookableTutors(
+          _tutors!,
+          _studentSessions,
+          widget.course.id,
+        );
+      }
+    });
+  }
+
+  Future<void> _handleBookingCompleted() async {
+    _bookingOccurred = true;
+    SessionRepositoryImpl.invalidate(widget.studentId.trim());
+    await AnalyticsRepositoryImpl.invalidateTutorsForCourse(
+      widget.course.id,
+      studentId: widget.studentId,
+    );
+    await _loadStudentSessions();
+    await _loadTutors(forceRefresh: true);
+    if (widget.studentId.isNotEmpty) {
+      await _loadGoToTutor(forceRefresh: true);
+    }
   }
 
   Future<void> _initConnectivity() async {
@@ -77,20 +141,32 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
       // Refresh as soon as we recover connectivity so stale/empty offline UI
       // is replaced without forcing the user to leave and re-enter the screen.
       if (wasOffline && !nowOffline) {
-        _loadTutors();
-        if (widget.studentId.isNotEmpty) _loadGoToTutor();
+        _loadStudentSessions();
+        _loadTutors(forceRefresh: true);
+        if (widget.studentId.isNotEmpty) _loadGoToTutor(forceRefresh: true);
       }
     });
   }
 
-  Future<void> _loadTutors() async {
+  Future<void> _loadTutors({bool forceRefresh = false}) async {
     try {
+      if (forceRefresh) {
+        await AnalyticsRepositoryImpl.invalidateTutorsForCourse(
+          widget.course.id,
+          studentId: widget.studentId,
+        );
+      }
       final result = await _tutoringRepo.getAvailableTutorsNext4Hours(
+        widget.course.id,
+      );
+      final filtered = BookingAvailabilityService.filterBookableTutors(
+        result.data,
+        _studentSessions,
         widget.course.id,
       );
       if (mounted) {
         setState(() {
-          _tutors = result.data;
+          _tutors = filtered;
           _tutorsFromCache = result.isFromCache;
           _tutorsLoadFailed = false;
           // Heuristic: if remote path succeeds (not cache fallback), we have
@@ -100,7 +176,7 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
         await _tutoringRepo.trackCarouselEvent(
           'results_shown',
           widget.course.id,
-          resultCount: result.data.length,
+          resultCount: filtered.length,
         );
       }
     } catch (_) {
@@ -117,8 +193,14 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
     }
   }
 
-  Future<void> _loadGoToTutor() async {
+  Future<void> _loadGoToTutor({bool forceRefresh = false}) async {
     try {
+      if (forceRefresh) {
+        await AnalyticsRepositoryImpl.invalidateTutorsForCourse(
+          widget.course.id,
+          studentId: widget.studentId,
+        );
+      }
       final result = await _tutoringRepo.getGoToTutor(
         widget.studentId,
         widget.course.id,
@@ -160,7 +242,7 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: AppColors.brown),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () => Navigator.pop(context, _bookingOccurred),
         ),
         title: Text(widget.course.name, style: AppTextStyles.itemTitle),
       ),
@@ -224,15 +306,21 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
               ),
             ],
 
-            if (_goToTutorLoaded && _goToTutor != null) ...[
+            if (_goToTutorLoaded &&
+                BookingAvailabilityService.shouldShowGoToTutor(
+                  _goToTutor,
+                  _studentSessions,
+                  widget.course.id,
+                )) ...[
               const SizedBox(height: 24),
               _GoToTutorSection(
                 tutor: _goToTutor!,
                 studentId: widget.studentId,
                 courseId: widget.course.id,
-                existingSessions: widget.existingSessions,
+                studentSessions: _studentSessions,
                 fromCache: _goToTutorFromCache || _isOffline,
                 lastUpdated: _goToTutorLastUpdated,
+                onBookingCompleted: _handleBookingCompleted,
               ),
             ],
 
@@ -243,11 +331,12 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
               tutors: _tutors,
               loadFailed: _tutorsLoadFailed,
               fromCache: _tutorsFromCache || _isOffline,
-              onRetry: _loadTutors,
+              onRetry: () => _loadTutors(forceRefresh: true),
               studentId: widget.studentId,
               courseId: widget.course.id,
-              existingSessions: widget.existingSessions,
+              studentSessions: _studentSessions,
               isOnCampus: widget.isOnCampus,
+              onBookingCompleted: _handleBookingCompleted,
               onTutorTapped: (tutor) {
                 final countdown = tutor.nextSlotStart
                     ?.difference(DateTime.now())
@@ -284,7 +373,8 @@ class _TutorSection extends StatelessWidget {
   final VoidCallback onRetry;
   final String studentId;
   final String courseId;
-  final List<SessionEntity> existingSessions;
+  final List<SessionEntity> studentSessions;
+  final Future<void> Function() onBookingCompleted;
   final void Function(TutorEntity tutor)? onTutorTapped;
   final void Function(TutorEntity tutor)? onTutorBooked;
   // True when tutors were served from the Hive cache (device offline).
@@ -297,7 +387,8 @@ class _TutorSection extends StatelessWidget {
     required this.onRetry,
     required this.studentId,
     required this.courseId,
-    required this.existingSessions,
+    required this.studentSessions,
+    required this.onBookingCompleted,
     this.onTutorTapped,
     this.onTutorBooked,
     this.fromCache = false,
@@ -408,19 +499,19 @@ class _TutorSection extends StatelessWidget {
               separatorBuilder: (_, _) => const SizedBox(width: 12),
               itemBuilder: (context, i) {
                 final tutor = tutors![i];
-                final alreadyBooked = existingSessions.any(
-                  (s) => s.tutorId == tutor.id,
-                );
                 return TutorCarouselCard(
                   tutor: tutor,
                   isOnCampus: isOnCampus,
                   onTap: () async {
-                    if (alreadyBooked) {
+                    final blockReason = BookingAvailabilityService.blockReason(
+                      tutor,
+                      studentSessions,
+                      courseId,
+                    );
+                    if (blockReason != null) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text(
-                            'You already have a pending session with ${tutor.name}.',
-                          ),
+                          content: Text(blockReason),
                           behavior: SnackBarBehavior.floating,
                         ),
                       );
@@ -440,7 +531,7 @@ class _TutorSection extends StatelessWidget {
                       ),
                     );
                     if (booked == true && context.mounted) {
-                      Navigator.pop(context, true);
+                      await onBookingCompleted();
                     }
                   },
                 );
@@ -456,7 +547,8 @@ class _GoToTutorSection extends StatelessWidget {
   final TutorEntity tutor;
   final String studentId;
   final String courseId;
-  final List<SessionEntity> existingSessions;
+  final List<SessionEntity> studentSessions;
+  final Future<void> Function() onBookingCompleted;
   final bool fromCache;
   final DateTime? lastUpdated;
 
@@ -464,7 +556,8 @@ class _GoToTutorSection extends StatelessWidget {
     required this.tutor,
     required this.studentId,
     required this.courseId,
-    required this.existingSessions,
+    required this.studentSessions,
+    required this.onBookingCompleted,
     this.fromCache = false,
     this.lastUpdated,
   });
@@ -567,15 +660,15 @@ class _GoToTutorSection extends StatelessWidget {
         const SizedBox(height: 14),
         GestureDetector(
           onTap: () async {
-            final alreadyBooked = existingSessions.any(
-              (s) => s.tutorId == tutor.id,
+            final blockReason = BookingAvailabilityService.blockReason(
+              tutor,
+              studentSessions,
+              courseId,
             );
-            if (alreadyBooked) {
+            if (blockReason != null) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text(
-                    'You already have a pending session with ${tutor.name}.',
-                  ),
+                  content: Text(blockReason),
                   behavior: SnackBarBehavior.floating,
                 ),
               );
@@ -593,7 +686,7 @@ class _GoToTutorSection extends StatelessWidget {
               ),
             );
             if (booked == true && context.mounted) {
-              Navigator.pop(context, true);
+              await onBookingCompleted();
             }
           },
           child: Container(

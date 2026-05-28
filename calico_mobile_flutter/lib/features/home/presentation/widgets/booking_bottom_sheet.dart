@@ -5,6 +5,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_text_styles.dart';
 import '../../../../core/local/pending_sessions_database.dart';
 import '../../../../core/network/api_client.dart';
+import '../../data/repositories/analytics_repository_impl.dart';
 import '../../data/repositories/session_repository_impl.dart';
 import '../../domain/entities/tutor_entity.dart';
 
@@ -145,13 +146,12 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
             'slotIndex': widget.tutor.nextSlotIndex,
         },
       );
-      SessionRepositoryImpl.invalidate(widget.studentId.trim());
+      await _notifyBookingCompleted();
       if (!mounted) return;
       setState(() {
         _isLoading = false;
         _booked = true;
       });
-      widget.onBooked?.call();
       // Fetch the global instant booking success rate to show in the confirmation.
       // Fire-and-forget: never block or fail the booking on this.
       client.get('/analytics/booking-success').then((data) {
@@ -177,6 +177,16 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
     }
   }
 
+  Future<void> _notifyBookingCompleted() async {
+    final studentId = widget.studentId.trim();
+    SessionRepositoryImpl.invalidate(studentId);
+    await AnalyticsRepositoryImpl.invalidateTutorsForCourse(
+      widget.courseId,
+      studentId: studentId,
+    );
+    widget.onBooked?.call();
+  }
+
   /// Persists the booking to the local SQLite pending_sessions table.
   /// On success sets [_savedOffline] = true so the UI shows the queued state.
   Future<void> _queueOffline() async {
@@ -190,15 +200,31 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
         final now = DateTime.now();
         window = (start: now, end: now.add(_defaultSessionDuration));
       }
+
       final db = PendingSessionsDatabase.instance;
-      await db
-          .into(db.pendingSessions)
-          .insert(
+      final startIso = window.start.toIso8601String();
+      final isDuplicate = await db.hasDuplicatePending(
+        studentId: widget.studentId,
+        tutorId: widget.tutor.id,
+        courseId: widget.courseId,
+        scheduledStart: startIso,
+      );
+      if (isDuplicate) {
+        if (!mounted) return;
+        setState(() {
+          _isLoading = false;
+          _error =
+              'You already queued this session. Check Pending Sync on Home.';
+        });
+        return;
+      }
+
+      await db.into(db.pendingSessions).insert(
             PendingSessionsCompanion.insert(
               tutorId: widget.tutor.id,
               studentId: widget.studentId,
               courseId: widget.courseId,
-              scheduledStart: window.start.toIso8601String(),
+              scheduledStart: startIso,
               scheduledEnd: window.end.toIso8601String(),
               location: widget.tutor.location,
               bookingSource: widget.bookingSource,
@@ -208,6 +234,8 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
               nextSlotIndex: Value(widget.tutor.nextSlotIndex),
             ),
           );
+
+      await _notifyBookingCompleted();
       if (!mounted) return;
       setState(() {
         _isLoading = false;
@@ -220,6 +248,10 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
         _error = 'Could not save booking offline. Please try again.';
       });
     }
+  }
+
+  void _completeSheetAndPop() {
+    Navigator.pop(context, true);
   }
 
   /// Returns true when the error looks like a connectivity / network issue
@@ -236,6 +268,19 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
 
   @override
   Widget build(BuildContext context) {
+    return PopScope(
+      canPop: !_savedOffline && !_booked,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        if (_savedOffline || _booked) {
+          _completeSheetAndPop();
+        }
+      },
+      child: _buildSheet(context),
+    );
+  }
+
+  Widget _buildSheet(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: const BoxDecoration(
@@ -276,7 +321,7 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
             ),
             const SizedBox(height: 24),
             ElevatedButton(
-              onPressed: () => Navigator.pop(context, true),
+              onPressed: _completeSheetAndPop,
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primary,
                 elevation: 0,
@@ -314,7 +359,7 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
             ],
             const SizedBox(height: 24),
             ElevatedButton(
-              onPressed: () => Navigator.pop(context, true),
+              onPressed: _completeSheetAndPop,
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primary,
                 elevation: 0,

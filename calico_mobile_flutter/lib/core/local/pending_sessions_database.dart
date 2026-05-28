@@ -86,4 +86,20 @@ class PendingSessionsDatabase extends _$PendingSessionsDatabase {
   Future<int> deleteById(int id) {
     return (delete(pendingSessions)..where((t) => t.id.equals(id))).go();
   }
+
+  /// Prevents duplicate offline queues for the same tutor/course/start time.
+  Future<bool> hasDuplicatePending({
+    required String studentId,
+    required String tutorId,
+    required String courseId,
+    required String scheduledStart,
+  }) async {
+    final rows = await getUnsynced(studentId);
+    return rows.any(
+      (row) =>
+          row.tutorId == tutorId &&
+          row.courseId == courseId &&
+          row.scheduledStart == scheduledStart,
+    );
+  }
 }

@@ -7,6 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_text_styles.dart';
 import '../../../home/data/models/available_tutor_model.dart';
+import '../../../home/data/repositories/analytics_repository_impl.dart';
 import '../../../home/presentation/widgets/booking_bottom_sheet.dart';
 import '../../data/repositories/tutor_search_repository_impl.dart';
 import '../../../../core/network/api_client.dart';
@@ -122,9 +123,12 @@ class _TutorSearchScreenState extends State<TutorSearchScreen> {
         courseId: courseId,
         bookingSource: 'tutor_search',
         onBooked: () {
-          // Invalidate cache for this course after a successful booking so the
-          // next search fetches fresh availability from the server.
           _controller.invalidateForCourse(courseId);
+          // Fire-and-forget — keeps [VoidCallback] signature on the sheet.
+          AnalyticsRepositoryImpl.invalidateTutorsForCourse(
+            courseId,
+            studentId: widget.studentId,
+          );
         },
       ),
     );

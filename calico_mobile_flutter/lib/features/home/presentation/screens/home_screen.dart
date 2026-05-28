@@ -194,6 +194,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     if (mounted) setState(() => _isSyncing = true);
 
+    final pendingBefore =
+        await PendingSessionsDatabase.instance.getUnsynced(widget.studentId);
+    final courseIds = pendingBefore.map((r) => r.courseId).toSet();
+
     final result = await SyncService(
       ApiClient(),
     ).syncPendingSessions(widget.studentId);
@@ -211,27 +215,38 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       );
     }
 
-    await _controller.loadPendingSessions(widget.studentId);
-    if (result.synced > 0) {
-      // Invalidate stale LRU cache so the reload fetches the confirmed sessions
-      // from the server instead of returning the pre-sync cached list.
-      SessionRepositoryImpl.invalidate(widget.studentId);
-      await _controller.loadSessions(widget.studentId);
+    await _applyPostSyncRefresh(result, courseIds);
 
-      if (mounted) {
-        final label = result.synced == 1
-            ? '1 pending booking was confirmed!'
-            : '${result.synced} pending bookings were confirmed!';
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(label),
-            backgroundColor: Colors.green.shade700,
-            duration: const Duration(seconds: 5),
-          ),
-        );
-      }
+    if (result.synced > 0 && mounted) {
+      final label = result.synced == 1
+          ? '1 pending booking was confirmed!'
+          : '${result.synced} pending bookings were confirmed!';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(label),
+          backgroundColor: Colors.green.shade700,
+          duration: const Duration(seconds: 5),
+        ),
+      );
     }
     if (mounted) setState(() {});
+  }
+
+  Future<void> _applyPostSyncRefresh(
+    SyncResult result,
+    Set<String> courseIds,
+  ) async {
+    await _controller.loadPendingSessions(widget.studentId);
+    if (result.synced <= 0) return;
+
+    SessionRepositoryImpl.invalidate(widget.studentId);
+    await _controller.loadSessions(widget.studentId);
+    for (final courseId in courseIds) {
+      await AnalyticsRepositoryImpl.invalidateTutorsForCourse(
+        courseId,
+        studentId: widget.studentId,
+      );
+    }
   }
 
   Future<void> _refreshAll() async {
@@ -284,6 +299,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
       if (mounted) setState(() => _isSyncing = true);
 
+      final pendingBefore =
+          await PendingSessionsDatabase.instance.getUnsynced(widget.studentId);
+      final courseIds = pendingBefore.map((r) => r.courseId).toSet();
+
       final result = await SyncService(
         ApiClient(),
       ).syncPendingSessions(widget.studentId);
@@ -291,13 +310,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (!mounted) return;
       setState(() => _isSyncing = false);
 
-      await _controller.loadPendingSessions(widget.studentId);
-      if (result.synced > 0) {
-        // Invalidate the stale LRU cache so the next getStudentSessions call
-        // fetches fresh data from the server (which now includes the synced sessions).
-        SessionRepositoryImpl.invalidate(widget.studentId);
-        await _controller.loadSessions(widget.studentId);
-      }
+      await _applyPostSyncRefresh(result, courseIds);
       if (mounted) setState(() {});
 
       if (result.synced > 0 && mounted) {
@@ -554,8 +567,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       );
                       if (!mounted) return;
                       await _controller.loadPendingSessions(widget.studentId);
-                      if (booked == true && !_isOffline) {
-                        _controller.loadData(widget.studentId);
+                      if (booked == true) {
+                        await _controller.loadSessions(widget.studentId);
                       }
                       if (mounted) setState(() {});
                     },
@@ -624,8 +637,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   );
                   if (!mounted) return;
                   await _controller.loadPendingSessions(widget.studentId);
-                  if (booked == true && !_isOffline) {
-                    _controller.loadData(widget.studentId);
+                  if (booked == true) {
+                    await _controller.loadSessions(widget.studentId);
                   }
                   if (mounted) setState(() {});
                 },

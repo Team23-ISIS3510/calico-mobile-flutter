@@ -1,6 +1,7 @@
 import '../../../../core/cache/home_remote_memory_cache_policy.dart';
 import '../../../../core/cache/lru_cache.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/storage/available_tutors_hive_cache.dart';
 import '../../domain/entities/tutor_entity.dart';
 import '../../domain/repositories/analytics_repository.dart';
 import '../models/available_tutor_model.dart';
@@ -42,6 +43,19 @@ class AnalyticsRepositoryImpl implements AnalyticsRepository {
   );
 
   const AnalyticsRepositoryImpl(this._apiClient);
+
+  /// Clears in-memory and Hive tutor caches so the next fetch reflects a new
+  /// booking or a successful pending sync.
+  static Future<void> invalidateTutorsForCourse(
+    String courseId, {
+    String? studentId,
+  }) async {
+    _tutorCache.invalidate(courseId);
+    if (studentId != null && studentId.trim().isNotEmpty) {
+      _returningTutorCache.invalidate((studentId.trim(), courseId));
+    }
+    await AvailableTutorsHiveCache.instance.clearForCourse(courseId);
+  }
 
   @override
   Future<TutorEntity?> getReturningTutor(
