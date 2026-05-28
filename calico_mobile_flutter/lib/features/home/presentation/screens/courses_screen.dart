@@ -21,6 +21,7 @@ import '../../domain/services/course_session_recency.dart';
 import '../../domain/services/courses_view_snapshot_isolate.dart';
 import '../widgets/course_card.dart';
 import 'course_detail_screen.dart';
+import 'tutors_screen.dart';
 
 /// Full catalogue of courses with a Favorites strip on top. Reuses the
 /// existing [CourseRepositoryImpl] LRU cache (10-min TTL, shared across the
@@ -137,31 +138,42 @@ class _CoursesScreenState extends State<CoursesScreen> {
     }
     try {
       final studentId = widget.studentId.trim();
-      final coursesFuture = _repo.getCourses();
-      final sessionsFuture = studentId.isEmpty
-          ? Future<List<SessionEntity>>.value(const [])
-          : _sessionRepo.getStudentSessions(studentId);
+      List<CourseEntity> courses = _allCourses;
+      List<SessionEntity> sessions = _lastSessionsSnapshot;
+      Object? coursesError;
+      Object? sessionsError;
 
-      final results = await Future.wait([
-        coursesFuture,
-        sessionsFuture,
-      ]);
-      final courses = results[0] as List<CourseEntity>;
-      final sessions = results[1] as List<SessionEntity>;
+      try {
+        courses = await _repo.getCourses();
+      } catch (e) {
+        coursesError = e;
+      }
+
+      try {
+        sessions = studentId.isEmpty
+            ? const []
+            : await _sessionRepo.getStudentSessions(studentId);
+      } catch (e) {
+        sessionsError = e;
+      }
+
+      if (courses.isEmpty && coursesError != null && _allCourses.isEmpty) {
+        throw coursesError;
+      }
+
       if (!mounted) return;
 
       setState(() {
-        _allCourses = courses;
+        if (courses.isNotEmpty) {
+          _allCourses = courses;
+        }
         _lastSessionsSnapshot = sessions;
         _isLoading = false;
         _loadFailed = false;
-        _servedFromCacheFallback = false;
+        _servedFromCacheFallback =
+            coursesError != null || sessionsError != null;
       });
 
-      // BQ6 (per-favorite recency) and the favorites sort run on a background
-      // isolate so a large session history never blocks the frame that just
-      // hid the spinner. Re-apply the active search query on the same beat so
-      // the All-Courses list is consistent with whatever is typed.
       _runSnapshot(sessions);
       _runFilter(_lastSearchQuery, immediate: true);
     } catch (_) {
@@ -428,6 +440,15 @@ class _CoursesScreenState extends State<CoursesScreen> {
       return;
     }
     if (index == 2) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => TutorsScreen(studentId: widget.studentId),
+        ),
+      );
+      return;
+    }
+    if (index == 3) {
       if (widget.studentId.trim().isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

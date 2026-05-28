@@ -91,8 +91,9 @@ class StudentTutoringRepositoryImpl implements StudentTutoringRepository {
       final now = DateTime.now();
       final upcoming = list
           .where((session) {
-            final start = session.startDateTime;
-            return start != null && start.isAfter(now);
+            final end = session.endDateTime ??
+                session.startDateTime?.add(const Duration(hours: 1));
+            return end != null && end.isAfter(now);
           })
           .toList()
         ..sort((a, b) {
@@ -102,6 +103,14 @@ class StudentTutoringRepositoryImpl implements StudentTutoringRepository {
               b.startDateTime ?? DateTime.fromMillisecondsSinceEpoch(0);
           return aStart.compareTo(bStart);
         });
+
+      // Dedup: mismo tutor + curso + slot = solo queda una.
+      final seen = <String>{};
+      upcoming.removeWhere((s) {
+        final key =
+            '${s.tutorId}_${s.courseId}_${s.startDateTime?.toIso8601String()}';
+        return !seen.add(key);
+      });
 
       await _safeUpsert(
         AppDatabaseService.tableUpcomingSessions,

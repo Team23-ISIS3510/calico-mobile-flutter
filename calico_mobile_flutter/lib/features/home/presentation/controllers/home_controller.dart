@@ -170,20 +170,66 @@ class HomeController extends ChangeNotifier {
   // ── Convenience loader (used by the retry button) ─────────────────────────
 
   /// Loads courses, sessions, and pending sessions in parallel, managing
-  /// status internally. Wraps the three loaders with [Future.wait] so their
-  /// I/O overlaps on the event loop.
+  /// status internally. Partial success is allowed: if courses load but
+  /// sessions fail (or vice versa), the screen still renders what it can.
   Future<void> loadData(String studentId) async {
     markLoading();
+    Object? coursesError;
+    Object? sessionsError;
+
     try {
-      await Future.wait([
-        loadCourses(studentId),
-        loadSessions(studentId),
-        loadPendingSessions(studentId),
-      ]);
-      markSuccess();
-    } on Exception catch (e) {
-      markFailure(e.toString());
+      await loadCourses(studentId);
+    } catch (e) {
+      coursesError = e;
     }
+
+    try {
+      await loadSessions(studentId);
+    } catch (e) {
+      sessionsError = e;
+    }
+
+    await loadPendingSessions(studentId);
+
+    _reapplyActiveSearch();
+
+    final hasCourses = _allCourses.isNotEmpty;
+    final hasSessions = _sessions.isNotEmpty || _pendingSessions.isNotEmpty;
+    final guestWithoutSessions = studentId.trim().isEmpty;
+
+    if (hasCourses || hasSessions || guestWithoutSessions) {
+      if (coursesError != null || sessionsError != null) {
+        _error = _partialLoadMessage(coursesError, sessionsError);
+      } else {
+        _error = null;
+      }
+      markSuccess();
+      return;
+    }
+
+    markFailure(
+      coursesError?.toString() ??
+          sessionsError?.toString() ??
+          'Could not load home data.',
+    );
+  }
+
+  void _reapplyActiveSearch() {
+    if (_lastSearchQuery.trim().isEmpty) return;
+    search(_lastSearchQuery);
+  }
+
+  String? _partialLoadMessage(Object? coursesError, Object? sessionsError) {
+    if (coursesError != null && sessionsError != null) {
+      return 'Some home data could not be refreshed. Showing what is available.';
+    }
+    if (coursesError != null) {
+      return 'Courses could not be refreshed. Showing cached sessions if available.';
+    }
+    if (sessionsError != null) {
+      return 'Sessions could not be refreshed. Course list is still available.';
+    }
+    return null;
   }
 
   // ── Search ────────────────────────────────────────────────────────────────

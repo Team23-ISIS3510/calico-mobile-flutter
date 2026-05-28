@@ -5,6 +5,8 @@ import 'package:calico_mobile_flutter/features/profile/presentation/screens/prof
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 
+import '../../../../core/local/pending_sessions_database.dart';
+import '../../domain/entities/session_entity.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_text_styles.dart';
 import '../../../../core/network/api_client.dart';
@@ -20,12 +22,14 @@ import '../../data/repositories/analytics_repository_impl.dart';
 import '../../data/repositories/course_repository_impl.dart';
 import '../../data/repositories/session_repository_impl.dart';
 import '../../data/repositories/student_tutoring_repository_impl.dart';
+import '../../domain/entities/course_entity.dart';
 import '../controllers/home_controller.dart';
 import '../widgets/course_card.dart';
 import '../widgets/session_card.dart';
 import 'course_detail_screen.dart';
 import 'courses_screen.dart';
 import 'session_detail_screen.dart';
+import 'tutors_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   /// Firebase UID of the logged-in student. Pass empty string for guest mode.
@@ -65,6 +69,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _connectivitySubscription = Connectivity().onConnectivityChanged.listen(
       _onConnectivityChanged,
     );
+    Connectivity().checkConnectivity().then((results) {
+      if (!mounted) return;
+      final offline =
+          results.isEmpty ||
+          results.every((r) => r == ConnectivityResult.none);
+      setState(() => _isOffline = offline);
+    }).catchError((_) {});
 
     if (widget.studentId.isNotEmpty) {
       Future.microtask(_trySyncIfOnline);
@@ -76,24 +87,49 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         })
         .catchError((_) {});
 
-    _controller.markLoading();
-    Future.wait([
-          _controller.loadCourses(widget.studentId),
-          _controller.loadSessions(widget.studentId),
-          _controller.loadPendingSessions(widget.studentId),
-        ], eagerError: false)
-        .then((_) {
-          if (!mounted) return;
-          _controller.markSuccess();
-        })
-        .catchError((Object e) {
-          if (!mounted) return;
-          _controller.markFailure(e.toString());
-        });
+    _controller.loadData(widget.studentId);
   }
 
   void _onUpdate() {
     if (mounted) setState(() {});
+  }
+
+  /// Up to four courses for the Home preview: upcoming session courses first,
+  /// then recommendations, then the filtered catalog.
+  /// Every source is intersected with the filtered catalog so the search bar
+  /// actually narrows the visible set.
+  List<CourseEntity> _homeCoursePreview() {
+    final filteredIds = {for (final c in _controller.courses) c.id};
+    final courseById = {for (final c in _controller.courses) c.id: c};
+    final preview = <CourseEntity>[];
+    final seen = <String>{};
+
+    for (final session in _controller.sessions) {
+      final id = session.courseId;
+      if (id == null || id.isEmpty || seen.contains(id)) continue;
+      if (!filteredIds.contains(id)) continue;
+      final course = courseById[id];
+      if (course == null) continue;
+      preview.add(course);
+      seen.add(id);
+      if (preview.length >= 4) return preview;
+    }
+
+    for (final course in _controller.recommendedCourses) {
+      if (seen.contains(course.id)) continue;
+      if (!filteredIds.contains(course.id)) continue;
+      preview.add(course);
+      seen.add(course.id);
+      if (preview.length >= 4) return preview;
+    }
+
+    for (final course in _controller.courses) {
+      if (seen.contains(course.id)) continue;
+      preview.add(course);
+      if (preview.length >= 4) break;
+    }
+
+    return preview;
   }
 
   void _onConnectivityChanged(List<ConnectivityResult> results) {
@@ -105,6 +141,39 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _trySyncIfOnline();
       ProfileRepositoryImpl(ApiClient()).syncPendingUpdate(widget.studentId);
     }
+  }
+
+  Future<void> _cancelPending(SessionEntity session) async {
+    // Extract the SQLite row id from 'pending_<id>'.
+    final localId = int.tryParse(session.id.replaceFirst('pending_', ''));
+    if (localId == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Cancel booking?', style: AppTextStyles.sectionTitle),
+        content: Text(
+          'This will remove the pending session with ${session.displayTutor}.',
+          style: AppTextStyles.itemSubtitle,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Keep'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Cancel booking'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+    await PendingSessionsDatabase.instance.deleteById(localId);
+    await _controller.loadPendingSessions(widget.studentId);
+    if (mounted) setState(() {});
   }
 
   Future<void> _retrySyncNow() async {
@@ -125,6 +194,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     if (mounted) setState(() => _isSyncing = true);
 
+    final pendingBefore =
+        await PendingSessionsDatabase.instance.getUnsynced(widget.studentId);
+    final courseIds = pendingBefore.map((r) => r.courseId).toSet();
+
     final result = await SyncService(
       ApiClient(),
     ).syncPendingSessions(widget.studentId);
@@ -142,27 +215,38 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       );
     }
 
-    await _controller.loadPendingSessions(widget.studentId);
-    if (result.synced > 0) {
-      // Invalidate stale LRU cache so the reload fetches the confirmed sessions
-      // from the server instead of returning the pre-sync cached list.
-      SessionRepositoryImpl.invalidate(widget.studentId);
-      await _controller.loadSessions(widget.studentId);
+    await _applyPostSyncRefresh(result, courseIds);
 
-      if (mounted) {
-        final label = result.synced == 1
-            ? '1 pending booking was confirmed!'
-            : '${result.synced} pending bookings were confirmed!';
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(label),
-            backgroundColor: Colors.green.shade700,
-            duration: const Duration(seconds: 5),
-          ),
-        );
-      }
+    if (result.synced > 0 && mounted) {
+      final label = result.synced == 1
+          ? '1 pending booking was confirmed!'
+          : '${result.synced} pending bookings were confirmed!';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(label),
+          backgroundColor: Colors.green.shade700,
+          duration: const Duration(seconds: 5),
+        ),
+      );
     }
     if (mounted) setState(() {});
+  }
+
+  Future<void> _applyPostSyncRefresh(
+    SyncResult result,
+    Set<String> courseIds,
+  ) async {
+    await _controller.loadPendingSessions(widget.studentId);
+    if (result.synced <= 0) return;
+
+    SessionRepositoryImpl.invalidate(widget.studentId);
+    await _controller.loadSessions(widget.studentId);
+    for (final courseId in courseIds) {
+      await AnalyticsRepositoryImpl.invalidateTutorsForCourse(
+        courseId,
+        studentId: widget.studentId,
+      );
+    }
   }
 
   Future<void> _refreshAll() async {
@@ -215,6 +299,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
       if (mounted) setState(() => _isSyncing = true);
 
+      final pendingBefore =
+          await PendingSessionsDatabase.instance.getUnsynced(widget.studentId);
+      final courseIds = pendingBefore.map((r) => r.courseId).toSet();
+
       final result = await SyncService(
         ApiClient(),
       ).syncPendingSessions(widget.studentId);
@@ -222,13 +310,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (!mounted) return;
       setState(() => _isSyncing = false);
 
-      await _controller.loadPendingSessions(widget.studentId);
-      if (result.synced > 0) {
-        // Invalidate the stale LRU cache so the next getStudentSessions call
-        // fetches fresh data from the server (which now includes the synced sessions).
-        SessionRepositoryImpl.invalidate(widget.studentId);
-        await _controller.loadSessions(widget.studentId);
-      }
+      await _applyPostSyncRefresh(result, courseIds);
       if (mounted) setState(() {});
 
       if (result.synced > 0 && mounted) {
@@ -304,16 +386,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       textAlign: TextAlign.center,
                     ),
                   ),
-                _SearchBar(
-                  controller: _searchController,
-                  onChanged: _controller.search,
-                ),
-                _ContextAwareBanner(
-                  title: ContextAwareHelper.getTitle(),
-                  message: ContextAwareHelper.getMessage(
-                    hasSessions: _controller.sessions.isNotEmpty,
+                RepaintBoundary(
+                  child: _ContextAwareBanner(
+                    title: ContextAwareHelper.getTitle(),
+                    message: ContextAwareHelper.getMessage(
+                      hasSessions: _controller.sessions.isNotEmpty,
+                    ),
+                    icon: ContextAwareHelper.getIcon(),
                   ),
-                  icon: ContextAwareHelper.getIcon(),
                 ),
               ],
             ),
@@ -331,17 +411,32 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
       bottomNavigationBar: AppBottomNav(
         selectedIndex: _selectedTab,
-        onTap: (i) {
+        onTap: (i) async {
           if (i == 1) {
-            Navigator.push(
+            await Navigator.push(
               context,
               MaterialPageRoute(
                 builder: (_) => CoursesScreen(studentId: widget.studentId),
               ),
             );
+            if (!mounted) return;
+            await _controller.loadPendingSessions(widget.studentId);
+            setState(() {});
             return;
           }
           if (i == 2) {
+            await Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => TutorsScreen(studentId: widget.studentId),
+              ),
+            );
+            if (!mounted) return;
+            await _controller.loadPendingSessions(widget.studentId);
+            setState(() {});
+            return;
+          }
+          if (i == 3) {
             if (widget.studentId.trim().isEmpty) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
@@ -358,12 +453,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               );
               return;
             }
-            Navigator.push(
+            await Navigator.push(
               context,
               MaterialPageRoute(
                 builder: (_) => ProfileScreen(userId: widget.studentId),
               ),
             );
+            if (!mounted) return;
+            await _controller.loadPendingSessions(widget.studentId);
+            setState(() {});
             return;
           }
           setState(() => _selectedTab = i);
@@ -385,7 +483,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       );
     }
 
-    if (_controller.status == HomeStatus.failure) {
+    if (_controller.status == HomeStatus.failure &&
+        _controller.pendingSessions.isEmpty) {
       final failureMessage = _isOffline
           ? 'Sin conexión. No pudimos actualizar Inicio, pero puedes reintentar cuando vuelvas a estar en línea.'
           : (_controller.error?.trim().isNotEmpty ?? false)
@@ -424,6 +523,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
 
     final recommended = _controller.recommendedCourses;
+    final previewCourses = _homeCoursePreview();
     final courses = _controller.courses;
     final pending = _controller.pendingSessions;
     final sessions = _controller.sessions;
@@ -437,7 +537,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         // ── Recommended for you ──────────────────────────────────────────
         if (widget.studentId.isNotEmpty && recommended.isNotEmpty) ...[
           const SliverToBoxAdapter(
-            child: SectionHeader('Recommended for you'),
+            child: const SectionHeader('Recommended for you'),
           ),
           SliverToBoxAdapter(
             child: SizedBox(
@@ -468,7 +568,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       if (!mounted) return;
                       await _controller.loadPendingSessions(widget.studentId);
                       if (booked == true) {
-                        _controller.loadData(widget.studentId);
+                        await _controller.loadSessions(widget.studentId);
                       }
                       if (mounted) setState(() {});
                     },
@@ -507,17 +607,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
         // ── Courses (preview, up to 4) ───────────────────────────────────
         const SliverToBoxAdapter(
-          child: SectionHeader('4 of your most recent courses'),
+          child: const SectionHeader('4 of your most recent courses'),
         ),
-        if (courses.isEmpty)
+        if (previewCourses.isEmpty)
           const SliverToBoxAdapter(
-            child: EmptyStateView('No courses found'),
+            child: const EmptyStateView('No courses found'),
           )
         else
           SliverList.builder(
-            itemCount: courses.length > 4 ? 4 : courses.length,
+            itemCount: previewCourses.length,
             itemBuilder: (context, index) {
-              final c = courses[index];
+              final c = previewCourses[index];
               return CourseCard(
                 course: c,
                 onTap: () async {
@@ -537,7 +637,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   );
                   if (!mounted) return;
                   await _controller.loadPendingSessions(widget.studentId);
-                  if (booked == true) _controller.loadData(widget.studentId);
+                  if (booked == true) {
+                    await _controller.loadSessions(widget.studentId);
+                  }
                   if (mounted) setState(() {});
                 },
               );
@@ -602,11 +704,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ),
           SliverList.builder(
             itemCount: pending.length,
-            itemBuilder: (context, index) => SessionCard(
-              session: pending[index],
-              showPendingBadge: true,
-              onTap: () {},
-            ),
+            itemBuilder: (context, index) {
+              final session = pending[index];
+              return SessionCard(
+                session: session,
+                showPendingBadge: true,
+                onCancel: () => _cancelPending(session),
+                onTap: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        'This booking is queued locally. Tap Retry now when you are online.',
+                        style: AppTextStyles.itemSubtitle.copyWith(
+                          color: Colors.white,
+                        ),
+                      ),
+                      backgroundColor: Colors.blueGrey.shade700,
+                      behavior: SnackBarBehavior.floating,
+                      margin: const EdgeInsets.all(16),
+                    ),
+                  );
+                },
+              );
+            },
           ),
         ],
 

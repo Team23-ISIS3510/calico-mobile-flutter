@@ -71,6 +71,17 @@ class AvailableTutorsHiveCache {
       // Ignore — nothing to recover from.
     }
   }
+
+  /// Drops the cached tutor list for a single course after a booking so the
+  /// next load does not resurrect a slot the student just reserved.
+  Future<void> clearForCourse(String courseId) async {
+    try {
+      final box = await _box();
+      await box.delete(courseId);
+    } catch (_) {
+      // Best-effort — LRU invalidation still applies on the remote path.
+    }
+  }
 }
 
 class AvailableTutorsCacheEntry {
